@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <title>Меню</title>
+  </head>
+  <body>
+    <header>
+      <h1>Наше Меню</h1>
+      <div
+        id="header-content"
+        hx-get="/header.html"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+      ></div>
+    </header>
+
+    <main>
+      <div
+        id="menu-content"
+        hx-get="/api/products"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+        hx-indicator="#loading"
+      >
+        <div id="loading" class="htmx-indicator">Загрузка меню...</div>
+      </div>
+    </main>
+
+    <!-- Модальное окно для детализации -->
+    <div id="itemModal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <div id="modalContent"></div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>© 2025 Доставка еды</p>
+      <p>Разработал: Медведева В.О.</p>
+    </footer>
+
+    <div id="notification"></div>
+
+    <script>
+      // Close modal when clicking the close button or outside the modal
+      const modal = document.getElementById("itemModal");
+      const closeBtn = document.getElementsByClassName("close")[0];
+
+      closeBtn.onclick = function () {
+        modal.style.display = "none";
+      };
+
+      window.onclick = function (event) {
+        if (event.target == modal) {
+          modal.style.display = "none";
+        }
+      };
+
+      // Показ уведомлений
+      function showNotification(message, type) {
+        const notification = document.getElementById("notification");
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.style.display = "block";
+
+        setTimeout(() => {
+          notification.style.display = "none";
+        }, 3000);
+      }
+
+      // Обработка ответа от сервера при добавлении в корзину
+      document.body.addEventListener("htmx:afterRequest", function (event) {
+        if (event.detail.pathInfo.requestPath === "/api/cart/add") {
+          if (event.detail.successful) {
+            showNotification("Товар добавлен в корзину", "success");
+          } else if (event.detail.xhr.status === 401) {
+            showNotification("Пожалуйста, войдите в систему", "error");
+          }
+        }
+      });
+
+      // Show modal when content is loaded
+      document.body.addEventListener("htmx:afterSwap", function (evt) {
+        if (evt.detail.target.id === "itemModal") {
+          modal.style.display = "block";
+        }
+      });
+    </script>
+  </body>
+</html>

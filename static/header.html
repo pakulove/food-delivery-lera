@@ -1,10 +1,65 @@
-<header>
-  <nav>
-    <a href="/">Главная</a>
-    <a href="/price.html">Прайс</a>
-    <div id="auth-links" hx-get="/api/auth/me" hx-trigger="load">
-      <!-- Auth links will be loaded here -->
-    </div>
-    <a href="/cart.html">Корзина</a>
-  </nav>
-</header>
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Доставка еды</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <ul>
+          <li><a href="/">Главная</a></li>
+          <li><a href="/menu.html">Меню</a></li>
+          <li><a href="/cart.html">Корзина</a></li>
+          <li id="auth-container">
+            <a href="/login.html">Войти</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <script>
+      function logout() {
+        fetch("/api/auth/logout", {
+          method: "POST",
+        }).then(() => {
+          window.location.href = "/";
+        });
+      }
+
+      // Получаем информацию о пользователе
+      fetch("/api/auth/me")
+        .then((response) => {
+          console.log("Auth response status:", response.status);
+          if (!response.ok) {
+            throw new Error("Not authorized");
+          }
+          return response.json();
+        })
+        .then((data) => {
+          console.log("Auth data:", data);
+          const authContainer = document.getElementById("auth-container");
+          if (data && data.username) {
+            console.log("User is authorized:", data.username);
+            authContainer.innerHTML = `
+            <button class="auth-container" onclick="logout()">Выйти</button>
+            <span class="username">Привет, ${data.username}!  </span>
+            `;
+          } else {
+            console.log("User is not authorized");
+            authContainer.innerHTML = `
+              <a href="/login.html">Войти</a>
+            `;
+          }
+        })
+        .catch((error) => {
+          console.error("Auth error:", error);
+          const authContainer = document.getElementById("auth-container");
+          authContainer.innerHTML = `
+            <a href="/login.html">Войти</a>
+          `;
+        });
+    </script>
+  </body>
+</html>

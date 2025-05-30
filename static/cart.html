@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Корзина</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="style.css" />
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link
       rel="stylesheet"
@@ -12,39 +12,30 @@
     />
     <script src="script.js"></script>
   </head>
-  <body data-page="cart">
+  <body>
     <header>
-      <nav>
-        <a href="/">Главная</a>
-        <a href="/price.html">Прайс</a>
-        <div id="auth-links" hx-get="/api/auth/me" hx-trigger="load"></div>
-        <a href="/cart.html">Корзина</a>
-      </nav>
+      <div
+        id="header-content"
+        hx-get="/header.html"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+      ></div>
     </header>
+
     <main>
-      <div id="cart-container">
-        <div id="cart">
-          <h2>🛒 Ваша корзина</h2>
-          <div
-            id="cart-items"
-            hx-get="/api/cart/items"
-            hx-trigger="load, cart-updated from:body"
-            hx-swap="innerHTML"
-          ></div>
-        </div>
+      <div class="cart-container">
+        <h1>Корзина</h1>
+
+        <div
+          id="cart-items"
+          hx-get="/api/cart/items"
+          hx-trigger="load, cart-updated from:body"
+          hx-on::after-request="handleCartResponse(event)"
+        ></div>
 
         <div class="order-details">
-          <div class="date-picker">
-            <h2>📅 Выберите даты аренды</h2>
-            <label for="start-date">Дата начала:</label>
-            <input type="date" id="start-date" name="start-date" required />
-
-            <label for="end-date">Дата окончания:</label>
-            <input type="date" id="end-date" name="end-date" required />
-          </div>
-
           <div class="payment-method">
-            <h3>💳 Способ оплаты</h3>
+            <h3>Способ оплаты</h3>
             <div class="payment-options">
               <label class="payment-option">
                 <input
@@ -54,7 +45,7 @@
                   checked
                   onchange="toggleCardFields(true)"
                 />
-                <span>💳 Банковская карта</span>
+                <span>Банковская карта</span>
               </label>
               <label class="payment-option">
                 <input
@@ -63,7 +54,7 @@
                   value="cash"
                   onchange="toggleCardFields(false)"
                 />
-                <span>💵 Наличные</span>
+                <span>Наличные</span>
               </label>
             </div>
 
@@ -120,70 +111,24 @@
             </div>
           </div>
 
-          <div class="cart-buttons">
+          <div class="cart-actions">
             <button
-              id="clear-cart-button"
+              class="clear-cart-btn"
               hx-post="/api/cart/clear"
+              hx-confirm="Вы уверены, что хотите очистить корзину?"
               hx-swap="none"
-              hx-trigger="click"
-              hx-on::after-request="
-                document.body.dispatchEvent(new Event('cart-updated'));
-                document.getElementById('start-date').value = '';
-                document.getElementById('end-date').value = '';
-              "
+              hx-on::after-request="handleClearCartResponse(event)"
             >
               Очистить корзину
             </button>
 
             <button
-              id="checkout-button"
+              class="checkout-btn"
               hx-post="/api/cart/checkout"
-              hx-include="[name='start-date'], [name='end-date'], [name='payment'], [name='card-number'], [name='card-expiry'], [name='card-cvv'], [name='card-holder']"
+              hx-include="[name='payment'], [name='card-number'], [name='card-expiry'], [name='card-cvv'], [name='card-holder']"
               hx-swap="none"
-              hx-on::before-request="
-                const cartItems = document.querySelectorAll('.cart-item');
-                if (cartItems.length === 0) {
-                  showNotification('Корзина пуста', 'error');
-                  event.preventDefault();
-                  return false;
-                }
-                const startDate = document.getElementById('start-date').value;
-                const endDate = document.getElementById('end-date').value;
-                if (!startDate || !endDate) {
-                  showNotification('Пожалуйста, выберите даты аренды', 'error');
-                  event.preventDefault();
-                  return false;
-                }
-                if (new Date(startDate) > new Date(endDate)) {
-                  showNotification('Дата начала не может быть позже даты окончания', 'error');
-                  event.preventDefault();
-                  return false;
-                }
-                const paymentMethod = document.querySelector('input[name=payment]:checked').value;
-                if (paymentMethod === 'card') {
-                  const cardNumber = document.getElementById('card-number').value;
-                  const cardExpiry = document.getElementById('card-expiry').value;
-                  const cardCVV = document.getElementById('card-cvv').value;
-                  const cardHolder = document.getElementById('card-holder').value;
-                  if (!cardNumber || !cardExpiry || !cardCVV || !cardHolder) {
-                    showNotification('Пожалуйста, заполните все поля карты', 'error');
-                    event.preventDefault();
-                    return false;
-                  }
-                }
-              "
-              hx-on::after-request="
-                if (event.detail.successful) {
-                  showNotification('✅ Заказ успешно оформлен!', 'success');
-                  setTimeout(() => {
-                    window.location.href = '/profile.html';
-                  }, 2000);
-                } else if (event.detail.xhr.status === 401) {
-                  window.location.href = '/login.html';
-                } else {
-                  showNotification('❌ Ошибка при оформлении заказа', 'error');
-                }
-              "
+              hx-on::before-request="validateCheckout(event)"
+              hx-on::after-request="handleCheckoutResponse(event)"
             >
               Оформить заказ
             </button>
@@ -192,63 +137,70 @@
       </div>
     </main>
 
-    <div id="notifications-container"></div>
+    <div id="notification" class="notification"></div>
 
     <script>
-      // Проверка авторизации при загрузке страницы
-      document.addEventListener("DOMContentLoaded", function () {
-        fetch("/api/auth/me")
-          .then((response) => response.text())
-          .then((html) => {
-            if (html.includes("Войти")) {
-              window.location.href = "/login.html";
-            }
-          });
-      });
+      // Показ уведомлений
+      function showNotification(message, type) {
+        const notification = document.getElementById("notification");
+        notification.textContent = message;
+        notification.className = `notification ${type}`;
+        notification.style.display = "block";
 
-      function validateDates() {
-        const startDate = document.getElementById("start-date").value;
-        const endDate = document.getElementById("end-date").value;
+        setTimeout(() => {
+          notification.style.display = "none";
+        }, 3000);
+      }
 
-        if (startDate && endDate) {
-          if (new Date(startDate) > new Date(endDate)) {
-            alert("Дата начала не может быть позже даты окончания");
-            document.getElementById("start-date").value = "";
-            document.getElementById("end-date").value = "";
-            return false;
+      // Обработка ответа при очистке корзины
+      function handleClearCartResponse(event) {
+        if (event.detail.successful) {
+          showNotification("Корзина очищена", "success");
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
+      }
+
+      // Валидация перед оформлением заказа
+      function validateCheckout(event) {
+        const cartItems = document.querySelectorAll(".cart-item");
+        if (cartItems.length === 0) {
+          event.preventDefault();
+          showNotification("Корзина пуста", "error");
+          return;
+        }
+
+        const paymentMethod = document.querySelector(
+          "input[name=payment]:checked"
+        ).value;
+        if (paymentMethod === "card") {
+          const cardNumber = document.getElementById("card-number").value;
+          const cardExpiry = document.getElementById("card-expiry").value;
+          const cardCVV = document.getElementById("card-cvv").value;
+          const cardHolder = document.getElementById("card-holder").value;
+
+          if (!cardNumber || !cardExpiry || !cardCVV || !cardHolder) {
+            event.preventDefault();
+            showNotification("Пожалуйста, заполните все поля карты", "error");
+            return;
           }
         }
-        return true;
       }
 
-      function showNotification(message, type = "success") {
-        const notification = document.createElement("div");
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-        document
-          .getElementById("notifications-container")
-          .appendChild(notification);
-        setTimeout(() => notification.remove(), 3000);
+      // Обработка ответа при оформлении заказа
+      function handleCheckoutResponse(event) {
+        if (event.detail.successful) {
+          showNotification("Заказ успешно оформлен!", "success");
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        } else if (event.detail.xhr.status === 401) {
+          showNotification("Пожалуйста, войдите в систему", "error");
+        }
       }
 
-      function logout() {
-        fetch("/api/auth/logout", {
-          method: "POST",
-          credentials: "include",
-        }).then(() => {
-          window.location.href = "/";
-        });
-      }
-
-      function toggleCardFields(show) {
-        const cardFields = document.getElementById("card-fields");
-        cardFields.style.display = show ? "block" : "none";
-        const inputs = cardFields.querySelectorAll("input");
-        inputs.forEach((input) => {
-          input.required = show;
-        });
-      }
-
+      // Форматирование полей карты
       function formatCardNumber(input) {
         let value = input.value.replace(/\D/g, "");
         value = value.replace(/(\d{4})/g, "$1 ").trim();
@@ -271,7 +223,17 @@
         input.value = input.value.toUpperCase();
       }
 
-      // Инициализация полей карты при загрузке страницы
+      // Переключение полей карты
+      function toggleCardFields(show) {
+        const cardFields = document.getElementById("card-fields");
+        cardFields.style.display = show ? "block" : "none";
+        const inputs = cardFields.querySelectorAll("input");
+        inputs.forEach((input) => {
+          input.required = show;
+        });
+      }
+
+      // Инициализация при загрузке
       document.addEventListener("DOMContentLoaded", function () {
         const paymentMethod = document.querySelector(
           "input[name=payment]:checked"

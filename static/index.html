@@ -3,64 +3,77 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>СтройПрокат - Главная</title>
-    <link rel="stylesheet" href="styles.css" />
+    <title>Доставка еды</title>
+    <link rel="stylesheet" href="style.css" />
     <script src="https://unpkg.com/htmx.org@1.9.6"></script>
   </head>
   <body data-page="index">
-    <!-- Пример для страницы входа -->
     <header>
-      <nav>
-        <a href="index.html">Главная</a>
-        <a href="price.html">Прайс</a>
-        <div id="auth-links" hx-get="/api/auth/me" hx-trigger="load">
-          <!-- Auth links will be loaded here -->
-        </div>
-        <a href="cart.html">Корзина</a>
-      </nav>
+      <div class="container">
+        <h1>Доставка еды</h1>
+        <div
+          id="header-content"
+          hx-get="/header.html"
+          hx-trigger="load"
+          hx-swap="innerHTML"
+        ></div>
+      </div>
     </header>
 
     <main>
-      <!-- Секция с фоновым изображением -->
-      <section class="hero-section">
-        <div class="hero-content">
-          <h1>Добро пожаловать в СтройПрокат!</h1>
-          <p>
-            Мы являемся главным помощником в осуществлении проектов любой
-            сложности, поскольку предоставляем самые качественные инструменты и
-            по низкому прайсу!
-          </p>
-          <button onclick="location.href='price.html'" class="price-button">
-            Перейти к прайсу
-          </button>
+      <section class="hero">
+        <h2>Добро пожаловать!</h2>
+        <p>
+          Выберите вкусную еду из нашего меню! У нас только свежие и
+          качественные продукты.
+        </p>
+        <a href="menu.html" class="button">Перейти к меню</a>
+      </section>
+
+      <section class="advantages">
+        <h2>Наши преимущества</h2>
+        <div class="advantages-grid">
+          <div class="advantage">
+            <img src="images/fresh-food.jpg" alt="Свежая еда" />
+            <h3>Свежие продукты</h3>
+            <p>Мы используем только свежие ингредиенты для ваших блюд.</p>
+          </div>
+          <div class="advantage">
+            <img src="images/fast-delivery.jpg" alt="Быстрая доставка" />
+            <h3>Быстрая доставка</h3>
+            <p>Доставим ваш заказ в течение 30 минут.</p>
+          </div>
+          <div class="advantage">
+            <img src="images/low-prices.jpg" alt="Низкие цены" />
+            <h3>Доступные цены</h3>
+            <p>Вкусная еда по разумным ценам.</p>
+          </div>
         </div>
       </section>
 
-      <!-- Секция отзывов -->
-      <section id="reviews">
+      <section class="testimonials">
         <h2>Отзывы наших клиентов</h2>
-        <div class="review">
-          <p>
-            "Отличный сервис! Все инструменты в идеальном состоянии. Буду
-            пользоваться ещё!"
-          </p>
-          <span>- Иван Петров</span>
+        <div class="testimonial">
+          <p>“Всё очень вкусно, доставка быстрая. Рекомендую всем!”</p>
+          <p class="author">– Анна Иванова</p>
         </div>
-        <div class="review">
-          <p>"Очень низкие цены и дружелюбный персонал. Рекомендую всем!"</p>
-          <span>- Анна Смирнова</span>
-        </div>
-        <div class="review">
-          <p>
-            "Сервис превзошел мои ожидания. Смог закончить проект вовремя
-            благодаря качественным инструментам."
-          </p>
-          <span>- Сергей Иванов</span>
+        <div class="testimonial">
+          <p>“Меню разнообразное, цены доступные. Остался доволен!”</p>
+          <p class="author">– Дмитрий Смирнов</p>
         </div>
       </section>
     </main>
 
-    <div id="notifications-container"></div>
+    <footer class="footer">
+      <div class="footer-container">
+        <p>© 2025 Доставка еды</p>
+        <p>Разработал: Медведева В.О.</p>
+        <div class="social-icons">
+          <a href="#"><img src="images/vk.png" alt="VK" /></a>
+          <a href="#"><img src="images/x.png" alt="X" /></a>
+        </div>
+      </div>
+    </footer>
 
     <script>
       function showNotification(message, type = "success") {

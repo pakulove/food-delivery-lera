@@ -1,35 +1,18 @@
 let notificationShown = false;
 
-function validateDates() {
-  const startDate = document.getElementById("rental-start").value;
-  const endDate = document.getElementById("rental-end").value;
-
-  if (startDate && endDate) {
-    if (new Date(startDate) > new Date(endDate)) {
-      showNotification(
-        "Дата начала не может быть позже даты окончания",
-        "error"
-      );
-      document.getElementById("rental-start").value = "";
-      document.getElementById("rental-end").value = "";
-      return false;
-    }
-  }
-  return true;
-}
-
 function showNotification(message, type) {
   if (notificationShown) return;
   notificationShown = true;
 
   const notification = document.createElement("div");
   notification.className = `notification ${type}`;
+  notification.style = "height: 100px;";
   notification.textContent = message;
   document.getElementById("notifications-container").appendChild(notification);
   setTimeout(() => {
     notification.remove();
     notificationShown = false;
-  }, 3000);
+  }, 1500);
 }
 
 // Handle authentication errors
