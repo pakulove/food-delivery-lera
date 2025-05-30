@@ -12,12 +12,12 @@
   ],
   "routes": [
     {
-      "src": "/styles.css",
-      "dest": "/static/styles.css"
+      "src": "/style.css",
+      "dest": "/static/style.css"
     },
     {
-      "src": "/price.html",
-      "dest": "/static/price.html"
+      "src": "/menu.html",
+      "dest": "/static/menu.html"
     },
     {
       "src": "/cart.html",
@@ -28,20 +28,8 @@
       "dest": "/static/login.html"
     },
     {
-      "src": "/register.html",
-      "dest": "/static/register.html"
-    },
-    {
-      "src": "/profile.html",
-      "dest": "/static/profile.html"
-    },
-    {
       "src": "/images/(.*)",
       "dest": "/static/images/$1"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/index.js"
     },
     {
       "src": "/(.*)",
