@@ -199,49 +199,35 @@ app.get("/api/products", async (req, res) => {
       const categoryProducts = products.filter(
         (p) => p.categoryid === category.id
       );
-      console.log(`Category ${category.name} products:`, categoryProducts);
 
       if (categoryProducts.length > 0) {
         html += `<h2 class="category-title">${category.name}</h2>`;
         html += '<div class="menu-grid">';
 
-        categoryProducts.forEach((product) => {
+        for (const product of categoryProducts) {
           html += `
-            <div class="menu-item" 
-                 hx-get="/api/menu/item/${product.id}" 
-                 hx-target="#itemModal" 
-                 hx-swap="innerHTML">
-              <img src="${product.image}" alt="${product.name}" />
+            <div class="menu-item" data-product-id="${product.id}">
+              <img src="/${product.image}" alt="${product.name}">
               <div class="menu-content">
                 <h3>${product.name}</h3>
-                <p>${product.description || ""}</p>
+                <p>${product.description}</p>
                 <div class="price-container">
-                  <span class="price">${product.price}₽</span>
-                  <button class="add-to-cart"
-                          hx-post="/api/cart/add"
-                          hx-vals='{"productid": ${product.id}}'
-                          hx-swap="none"
-                          hx-trigger="click"
-                          hx-on::after-request="document.body.dispatchEvent(new Event('cart-updated'))"
-                          onclick="event.stopPropagation()">
-                    +
-                  </button>
+                  <span class="price">${product.price} ₽</span>
+                  <button class="add-to-cart" onclick="addToCartImmediately(${product.id}, event)">+</button>
                 </div>
               </div>
             </div>
           `;
-        });
+        }
 
         html += "</div>";
       }
     }
 
     console.log("Generated HTML length:", html.length);
-    console.log("HTML preview:", html.substring(0, 200));
-
     res.send(html);
   } catch (err) {
-    console.error("Error in /api/products:", err);
+    console.error(err);
     res.status(500).send("Ошибка базы данных");
   }
 });
@@ -270,7 +256,10 @@ function getCategoryEmoji(category) {
 }
 
 // Add endpoint for menu item details
-app.get("/api/menu/item/:id", async (req, res) => {
+app.get("/api/products/:id", async (req, res) => {
+  console.log("GET /api/products/:id - Request received");
+  console.log("Product ID:", req.params.id);
+
   try {
     const { data: product, error } = await supabase
       .from("products")
@@ -278,54 +267,69 @@ app.get("/api/menu/item/:id", async (req, res) => {
       .eq("id", req.params.id)
       .single();
 
-    if (error) throw error;
-    if (!product) {
-      return res.status(404).send("Товар не найден");
+    console.log("Raw Supabase response:", { product, error });
+
+    if (error) {
+      console.error("Supabase error:", error);
+      throw error;
     }
 
+    if (!product) {
+      console.log("Product not found");
+      return res.status(404).send("Product not found");
+    }
+
+    console.log("Product data:", product);
+
+    // Формируем HTML для модального окна
     const html = `
-      <h2>${product.name}</h2>
-      <img src="${product.image}" alt="${
-      product.name
-    }" style="width: 100%; max-height: 200px; object-fit: cover" />
-      
-      <div class="details-section">
-        <h3>Состав</h3>
-        <p>${product.composition || "Нет информации о составе"}</p>
-        
-        <div class="nutrition-info">
-          <div class="nutrition-item">
-            <strong>Вес:</strong>
-            <span>${product.weight || "Нет информации"}</span>
-          </div>
-          <div class="nutrition-item">
-            <strong>Калории:</strong>
-            <span>${product.calories || "Нет информации"}</span>
-          </div>
-          <div class="nutrition-item">
-            <strong>Белки:</strong>
-            <span>${product.proteins || "Нет информации"}</span>
+      <div class="product-details">
+        <h2>${product.name}</h2>
+        <img src="/${product.image}" alt="${product.name}">
+        <div class="details-section">
+          <h3>Описание</h3>
+          <p>${product.description || "Нет описания"}</p>
+        </div>
+        <div class="details-section">
+          <h3>Состав</h3>
+          <p>${product.composition || "Нет информации о составе"}</p>
+        </div>
+        <div class="details-section">
+          <h3>Пищевая ценность</h3>
+          <div class="nutrition-info">
+            <div class="nutrition-item">
+              <span>Вес</span>
+              <strong>${product.weight || "0"}г</strong>
+            </div>
+            <div class="nutrition-item">
+              <span>Калории</span>
+              <strong>${product.calories || "0"}ккал</strong>
+            </div>
+            <div class="nutrition-item">
+              <span>Белки</span>
+              <strong>${product.proteins || "0"}г</strong>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="price-container" style="margin-top: 20px">
-        <span class="price">${product.price}₽</span>
-        <button class="add-to-cart-btn" 
-                hx-post="/api/cart/add"
-                hx-vals='{"productid": ${product.id}}'
-                hx-swap="none"
-                hx-trigger="click"
-                hx-on::after-request="document.body.dispatchEvent(new Event('cart-updated'))">
-          Добавить в корзину
-        </button>
+        <div class="customization-field">
+          <label for="item-customization">Особые пожелания:</label>
+          <textarea id="item-customization" placeholder="Например: без лука, добавить соус..."></textarea>
+        </div>
+        <div class="add-to-cart-container">
+          <div class="price">${product.price || "0"} ₽</div>
+          <button class="add-to-cart-btn" onclick="addToCartWithCustomization('${
+            product.id
+          }')">
+            Добавить в корзину
+          </button>
+        </div>
       </div>
     `;
-
+    console.log("Generated HTML:", html);
     res.send(html);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Ошибка базы данных");
+  } catch (error) {
+    console.error("Error in /api/products/:id:", error);
+    res.status(500).send("Internal server error");
   }
 });
 
@@ -471,8 +475,10 @@ app.get("/api/cart/items", async (req, res) => {
 app.post("/api/cart/add", async (req, res) => {
   const userid = req.cookies.user_id;
   console.log("Adding to cart. User ID:", userid);
+  console.log("Request body:", req.body);
 
   if (!userid) {
+    console.log("No user ID found, redirecting to login");
     return res.status(401).send(`
       <script>
         window.location.replace('/login.html');
@@ -490,6 +496,9 @@ app.post("/api/cart/add", async (req, res) => {
       .select("id")
       .eq("id", productid)
       .single();
+
+    console.log("Product check result:", product);
+    console.log("Product check error:", productError);
 
     if (productError) {
       console.error("Product check error:", productError);
@@ -512,6 +521,9 @@ app.post("/api/cart/add", async (req, res) => {
       ])
       .select()
       .single();
+
+    console.log("Cart insert result:", cartItem);
+    console.log("Cart insert error:", insertError);
 
     if (insertError) {
       console.error("Cart insert error:", insertError);
@@ -609,7 +621,7 @@ app.post("/api/cart/checkout", async (req, res) => {
 
     const total = items.reduce((sum, item) => sum + item.product.price, 0);
 
-    // Create order
+    // Create order with additional fields
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert([
@@ -617,6 +629,9 @@ app.post("/api/cart/checkout", async (req, res) => {
           userid: parseInt(userid),
           totalamount: total,
           orderdate: new Date().toISOString(),
+          deliveryaddress: req.body["delivery-address"] || null,
+          comments: req.body.comments || null,
+          customization: req.body.customization || null,
         },
       ])
       .select()
@@ -761,6 +776,9 @@ app.get("/api/orders", async (req, res) => {
         id,
         orderdate,
         totalamount,
+        customization,
+        comments,
+        deliveryaddress,
         order_items (
           productid,
           price,
@@ -780,7 +798,25 @@ app.get("/api/orders", async (req, res) => {
     let html = "";
 
     if (orders && orders.length > 0) {
+      html +=
+        '<div class="orders-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">';
       orders.forEach((order) => {
+        // Группируем одинаковые товары
+        const groupedItems = order.order_items.reduce((acc, item) => {
+          const key = item.productid;
+          if (!acc[key]) {
+            acc[key] = {
+              product: item.product,
+              price: item.price,
+              quantity: 1,
+              customization: item.customization,
+            };
+          } else {
+            acc[key].quantity++;
+          }
+          return acc;
+        }, {});
+
         html += `
           <div class="order-card">
             <div class="order-header">
@@ -792,16 +828,39 @@ app.get("/api/orders", async (req, res) => {
                 <span class="order-total">Итого: ${order.totalamount}₽</span>
               </div>
             </div>
+            <div class="order-details">
+              ${
+                order.deliveryaddress
+                  ? `<p><strong>Адрес доставки:</strong> ${order.deliveryaddress}</p>`
+                  : ""
+              }
+              ${
+                order.comments
+                  ? `<p><strong>Комментарий:</strong> ${order.comments}</p>`
+                  : ""
+              }
+            </div>
             <div class="order-items">
         `;
 
-        order.order_items.forEach((item) => {
+        Object.values(groupedItems).forEach((item) => {
           html += `
             <div class="order-item">
               <img src="${item.product.image}" alt="${item.product.name}" />
               <div class="item-details">
                 <h4>${item.product.name}</h4>
-                <span class="item-price">${item.price}₽</span>
+                <div class="item-info">
+                  <span class="item-price">${item.price}₽</span>
+                  <span class="item-quantity">x${item.quantity}</span>
+                </div>
+                ${
+                  item.customization
+                    ? `<div class="item-customization">${item.customization}</div>`
+                    : ""
+                }
+                <span class="item-total">Итого: ${
+                  item.price * item.quantity
+                }₽</span>
               </div>
             </div>
           `;
@@ -812,6 +871,7 @@ app.get("/api/orders", async (req, res) => {
           </div>
         `;
       });
+      html += "</div>";
     } else {
       html = `
         <div class="empty-orders">
@@ -828,6 +888,29 @@ app.get("/api/orders", async (req, res) => {
         Произошла ошибка при загрузке заказов
       </div>
     `);
+  }
+});
+
+// Add endpoint for cart size
+app.get("/api/cart/size", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.send("(0)");
+  }
+
+  try {
+    const { data: items, error } = await supabase
+      .from("cart")
+      .select("id")
+      .eq("userid", userid);
+
+    if (error) throw error;
+
+    const size = items ? items.length : 0;
+    res.send(`(${size})`);
+  } catch (err) {
+    console.error(err);
+    res.send("(0)");
   }
 });
 

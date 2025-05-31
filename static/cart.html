@@ -376,20 +376,27 @@
             "delivery",
             document.querySelector('input[name="delivery"]:checked').value
           );
-          formData.append(
-            "comments",
-            document.getElementById("order-comment").value
-          );
 
+          // Получаем и добавляем комментарий
+          const comments = document
+            .getElementById("order-comment")
+            .value.trim();
+          formData.append("comments", comments);
+
+          // Получаем и добавляем адрес доставки
           const deliveryMethod = document.querySelector(
             'input[name="delivery"]:checked'
           ).value;
-          formData.append(
-            "delivery-address",
+          const deliveryAddress =
             deliveryMethod === "pickup"
               ? "Самовывоз"
-              : document.getElementById("delivery-address").value
-          );
+              : document.getElementById("delivery-address").value.trim();
+          formData.append("delivery-address", deliveryAddress);
+
+          // Получаем и добавляем кастомизацию
+          const customization =
+            document.getElementById("customization")?.value.trim() || "";
+          formData.append("customization", customization);
 
           if (
             document.querySelector('input[name="payment"]:checked').value ===
@@ -416,7 +423,10 @@
           // Отправляем запрос на оформление заказа
           fetch("/api/cart/checkout", {
             method: "POST",
-            body: formData,
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams(formData),
           })
             .then((response) => response.json())
             .then((data) => {

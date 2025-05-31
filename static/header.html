@@ -14,11 +14,34 @@
             <li><a href="/">Главная</a></li>
             <li><a href="/menu.html">Меню</a></li>
             <li>
-              <a href="/cart.html" id="cart-link">
-                Корзина <span id="cart-count"></span>
+              <a href="/cart.html">
+                Корзина
+                <span
+                  id="cart-size"
+                  hx-get="/api/cart/size"
+                  hx-trigger="load, cart-updated from:body"
+                  hx-swap="innerHTML"
+                ></span>
               </a>
             </li>
-            <li><div id="auth-links"></div></li>
+            <li>
+              <a href="/login.html" id="login-link">Войти</a>
+            </li>
+            <li>
+              <a href="/register.html" id="register-link">Регистрация</a>
+            </li>
+            <li>
+              <a
+                href="/profile.html"
+                id="profile-link"
+                style="display: none"
+              ></a>
+            </li>
+            <li>
+              <button onclick="logout()" id="logout-btn" style="display: none">
+                Выйти
+              </button>
+            </li>
           </ul>
         </nav>
       </div>
@@ -32,65 +55,19 @@
         });
       }
 
-      // Получаем информацию о пользователе
+      // Check auth status on load
       fetch("/api/auth/me")
-        .then((response) => {
-          console.log("Auth response status:", response.status);
-          if (!response.ok) {
-            throw new Error("Not authorized");
-          }
-          return response.json();
-        })
+        .then((response) => response.json())
         .then((data) => {
-          console.log("Auth data:", data);
-          const authLinks = document.getElementById("auth-links");
-          if (data && data.username) {
-            console.log("User is authorized:", data.username);
-            authLinks.innerHTML = `
-              <div class="auth-container">
-                <a href="/profile.html" class="username">${data.username}</a>
-                <button onclick="logout()" class="logout-btn">Выйти</button>
-              </div>
-            `;
-          } else {
-            console.log("User is not authorized");
-            authLinks.innerHTML = `
-              <a href="/login.html" class="login-link">Войти</a>
-            `;
+          if (data.username) {
+            document.getElementById("login-link").style.display = "none";
+            document.getElementById("register-link").style.display = "none";
+            document.getElementById("profile-link").style.display =
+              "inline-flex";
+            document.getElementById("logout-btn").style.display = "inline-flex";
+            document.getElementById("profile-link").textContent = data.username;
           }
-        })
-        .catch((error) => {
-          console.error("Auth error:", error);
-          const authLinks = document.getElementById("auth-links");
-          authLinks.innerHTML = `
-            <a href="/login.html" class="login-link">Войти</a>
-          `;
         });
-
-      // Функция для обновления количества товаров в корзине
-      function updateCartCount() {
-        fetch("/api/cart/items")
-          .then((response) => response.json())
-          .then((data) => {
-            const cartCount = document.getElementById("cart-count");
-            if (data && data.length > 0) {
-              const totalItems = data.reduce(
-                (sum, item) => sum + item.count,
-                0
-              );
-              cartCount.textContent = `(${totalItems})`;
-            } else {
-              cartCount.textContent = "";
-            }
-          })
-          .catch((error) => console.error("Error fetching cart count:", error));
-      }
-
-      // Обновляем количество при загрузке страницы
-      document.addEventListener("DOMContentLoaded", updateCartCount);
-
-      // Обновляем количество при изменении корзины
-      document.body.addEventListener("cart-updated", updateCartCount);
     </script>
   </body>
 </html>

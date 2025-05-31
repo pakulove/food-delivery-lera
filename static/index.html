@@ -94,6 +94,55 @@
           window.location.href = "/";
         });
       }
+
+      function addToCartWithCustomization(productId) {
+        const customization =
+          document.getElementById("item-customization")?.value || "";
+
+        fetch("/api/cart/add", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productid: productId,
+            customization: customization,
+          }),
+          credentials: "include",
+        })
+          .then((response) => {
+            if (response.ok) {
+              document.body.dispatchEvent(new Event("cart-updated"));
+              const modal = document.querySelector(".modal-overlay");
+              if (modal) {
+                modal.remove();
+              }
+              showNotification("Товар добавлен в корзину");
+            } else {
+              throw new Error("Ошибка при добавлении в корзину");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showNotification("Ошибка при добавлении в корзину", "error");
+          });
+      }
+
+      // Закрытие модального окна при клике вне его
+      document.addEventListener("click", function (event) {
+        const modal = document.querySelector(".modal-overlay");
+        if (modal && event.target === modal) {
+          modal.remove();
+        }
+      });
+
+      // Предотвращение закрытия при клике на само модальное окно
+      document.addEventListener("click", function (event) {
+        const modalContent = document.querySelector("#itemModal");
+        if (modalContent && modalContent.contains(event.target)) {
+          event.stopPropagation();
+        }
+      });
     </script>
   </body>
 </html>

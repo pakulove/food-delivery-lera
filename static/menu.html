@@ -13,7 +13,7 @@
       <div
         id="header-content"
         hx-get="/header.html"
-        hx-trigger="load"
+        hx-trigger="load, cart-updated from:body"
         hx-swap="innerHTML"
       ></div>
     </header>
@@ -24,14 +24,13 @@
         hx-get="/api/products"
         hx-trigger="load"
         hx-swap="innerHTML"
-        hx-indicator="#loading"
       >
-        <div id="loading" class="htmx-indicator">Загрузка меню...</div>
+        <div class="loading-indicator">Загрузка меню...</div>
       </div>
     </main>
 
-    <!-- Модальное окно для детализации -->
-    <div id="itemModal" class="modal">
+    <!-- Модальное окно -->
+    <div id="itemModal" class="modal" style="display: none">
       <div class="modal-content">
         <span class="close">&times;</span>
         <div id="modalContent"></div>
@@ -46,47 +45,152 @@
     <div id="notification"></div>
 
     <script>
-      // Close modal when clicking the close button or outside the modal
-      const modal = document.getElementById("itemModal");
-      const closeBtn = document.getElementsByClassName("close")[0];
-
-      closeBtn.onclick = function () {
-        modal.style.display = "none";
-      };
-
-      window.onclick = function (event) {
-        if (event.target == modal) {
-          modal.style.display = "none";
-        }
-      };
-
-      // Показ уведомлений
+      // Базовые функции
       function showNotification(message, type) {
         const notification = document.getElementById("notification");
         notification.textContent = message;
         notification.className = `notification ${type}`;
         notification.style.display = "block";
-
         setTimeout(() => {
           notification.style.display = "none";
         }, 3000);
       }
 
-      // Обработка ответа от сервера при добавлении в корзину
+      // Модальное окно
+      const modal = document.getElementById("itemModal");
+      const closeBtn = document.querySelector(".close");
+
+      function openModal() {
+        modal.style.display = "block";
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeModal() {
+        modal.style.display = "none";
+        document.body.style.overflow = "auto";
+      }
+
+      closeBtn.onclick = closeModal;
+
+      window.onclick = function (event) {
+        if (event.target === modal) {
+          closeModal();
+        }
+      };
+
+      // Добавление в корзину
+      function addToCartImmediately(productId, event) {
+        event.stopPropagation();
+        fetch("/api/cart/add", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productid: productId,
+          }),
+          credentials: "include",
+        })
+          .then((response) => {
+            if (response.ok) {
+              document.body.dispatchEvent(new Event("cart-updated"));
+              showNotification("Товар добавлен в корзину", "success");
+            } else if (response.status === 401) {
+              showNotification("Пожалуйста, войдите в систему", "error");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showNotification("Ошибка при добавлении в корзину", "error");
+          });
+      }
+
+      function addToCartWithCustomization(productId) {
+        const customization =
+          document.getElementById("item-customization")?.value || "";
+        fetch("/api/cart/add", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            productid: productId,
+            customization: customization,
+          }),
+          credentials: "include",
+        })
+          .then((response) => {
+            if (response.ok) {
+              document.body.dispatchEvent(new Event("cart-updated"));
+              modal.style.display = "none";
+              showNotification("Товар добавлен в корзину", "success");
+            } else if (response.status === 401) {
+              showNotification("Пожалуйста, войдите в систему", "error");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showNotification("Ошибка при добавлении в корзину", "error");
+          });
+      }
+
+      // Обработчик клика по карточке товара
+      document.addEventListener("DOMContentLoaded", function () {
+        const modal = document.getElementById("itemModal");
+        const closeBtn = modal.querySelector(".close");
+
+        // Обработчик клика по карточке товара
+        document.addEventListener("click", function (event) {
+          const menuItem = event.target.closest(".menu-item");
+          if (menuItem && !event.target.closest(".add-to-cart")) {
+            const productId = menuItem.dataset.productId;
+            console.log("Opening modal for product:", productId);
+
+            fetch(`/api/products/${productId}`)
+              .then((response) => {
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.text();
+              })
+              .then((html) => {
+                console.log("Received HTML:", html);
+                const modalContent = document.getElementById("modalContent");
+                modalContent.innerHTML = html;
+                modal.style.display = "block";
+                document.body.style.overflow = "hidden";
+                console.log("Modal should be visible now");
+              })
+              .catch((error) => {
+                console.error("Error:", error);
+                showNotification("Ошибка при загрузке товара", "error");
+              });
+          }
+        });
+
+        // Закрытие модального окна
+        closeBtn.onclick = function () {
+          modal.style.display = "none";
+          document.body.style.overflow = "auto";
+        };
+
+        window.onclick = function (event) {
+          if (event.target === modal) {
+            modal.style.display = "none";
+            document.body.style.overflow = "auto";
+          }
+        };
+      });
+
+      // Обработчик успешного добавления в корзину
       document.body.addEventListener("htmx:afterRequest", function (event) {
         if (event.detail.pathInfo.requestPath === "/api/cart/add") {
           if (event.detail.successful) {
             showNotification("Товар добавлен в корзину", "success");
+            htmx.trigger("#header-content", "cart-updated");
           } else if (event.detail.xhr.status === 401) {
             showNotification("Пожалуйста, войдите в систему", "error");
           }
-        }
-      });
-
-      // Show modal when content is loaded
-      document.body.addEventListener("htmx:afterSwap", function (evt) {
-        if (evt.detail.target.id === "itemModal") {
-          modal.style.display = "block";
         }
       });
     </script>
