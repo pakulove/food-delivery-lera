@@ -573,11 +573,22 @@ app.delete("/api/cart/remove/:id", async (req, res) => {
   }
 
   try {
+    // Сначала получаем productid удаляемого товара
+    const { data: cartItem, error: getError } = await supabase
+      .from("cart")
+      .select("productid")
+      .eq("id", req.params.id)
+      .eq("userid", userid)
+      .single();
+
+    if (getError) throw getError;
+
+    // Удаляем все записи этого товара из корзины
     const { error } = await supabase
       .from("cart")
       .delete()
-      .eq("id", req.params.id)
-      .eq("userid", userid);
+      .eq("userid", userid)
+      .eq("productid", cartItem.productid);
 
     if (error) throw error;
 
