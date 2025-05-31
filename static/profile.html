@@ -9,17 +9,23 @@
   </head>
   <body>
     <header>
-        <h1>Профиль</h1>
-        <div
-          id="header-content"
-          hx-get="/header.html"
-          hx-trigger="load"
-          hx-swap="innerHTML"
-        ></div>
-      </header>
+      <h1>Профиль</h1>
+      <div
+        id="header-content"
+        hx-get="/header.html"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+      ></div>
+    </header>
 
     <main>
       <div class="profile-container">
+        <div class="user-info">
+          <h2>Информация о пользователе</h2>
+          <div id="user-discount" hx-get="/api/user/discount" hx-trigger="load">
+            <div class="loading">Загрузка информации о скидке...</div>
+          </div>
+        </div>
         <h1>История заказов</h1>
         <div id="orders-list" hx-get="/api/orders" hx-trigger="load">
           <div class="loading">Загрузка заказов...</div>
@@ -46,6 +52,29 @@
           window.location.href = "/";
         });
       }
+
+      document.addEventListener("DOMContentLoaded", async () => {
+        // Load user discount
+        try {
+          const response = await fetch("/api/user/discount");
+          if (response.ok) {
+            const html = await response.text();
+            document.getElementById("user-discount").innerHTML = html;
+          } else {
+            const data = await response.json();
+            if (data.redirect) {
+              window.location.href = data.redirect;
+            }
+          }
+        } catch (err) {
+          console.error("Error loading user discount:", err);
+          document.getElementById("user-discount").innerHTML = `
+            <div class="error-message">
+              Произошла ошибка при загрузке информации о скидке
+            </div>
+          `;
+        }
+      });
     </script>
   </body>
 </html>

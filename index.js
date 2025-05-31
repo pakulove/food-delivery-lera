@@ -656,7 +656,29 @@ app.post("/api/cart/checkout", async (req, res) => {
       return res.status(400).json({ error: "Корзина пуста" });
     }
 
+    // Получаем текущую скидку пользователя
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("discount")
+      .eq("id", userid)
+      .single();
+
+    if (userError) throw userError;
+
+    const currentDiscount = user.discount || 0;
     const total = items.reduce((sum, item) => sum + item.product.price, 0);
+
+    // Рассчитываем новую скидку (0.1% от суммы заказа)
+    const discountIncrease = total * 0.001;
+    const newDiscount = Math.min(currentDiscount + discountIncrease, 20);
+
+    // Обновляем скидку пользователя
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ discount: newDiscount })
+      .eq("id", userid);
+
+    if (updateError) throw updateError;
 
     // Get the latest order with customization
     const { data: lastOrder, error: lastOrderError } = await supabase
@@ -971,6 +993,52 @@ app.get("/api/cart/size", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.send("(0)");
+  }
+});
+
+// Добавляем эндпоинт для получения скидки пользователя
+app.get("/api/user/discount", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.status(401).json({
+      error: "Not authenticated",
+      redirect: "/login.html",
+    });
+  }
+
+  try {
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("discount")
+      .eq("id", userid)
+      .single();
+
+    if (error) throw error;
+
+    const discount = user.discount || 0;
+    const maxDiscount = 20;
+    const progress = (discount / maxDiscount) * 100;
+
+    const html = `
+      <div class="discount-info">
+        <div class="discount-value">${discount.toFixed(1)}%</div>
+        <div class="discount-progress">
+          <div class="discount-progress-bar" style="width: ${progress}%"></div>
+        </div>
+        <div class="discount-description">
+          Ваша персональная скидка. Максимальная скидка: ${maxDiscount}%
+        </div>
+      </div>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error("Error fetching user discount:", err);
+    res.status(500).send(`
+      <div class="error-message">
+        Произошла ошибка при загрузке информации о скидке
+      </div>
+    `);
   }
 });
 
