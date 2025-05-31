@@ -1257,3 +1257,21 @@ button:disabled {
   font-size: 14px;
   margin-top: 10px;
 }
+
+.menu-item.disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.menu-item.disabled:hover {
+  transform: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.add-to-cart.disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  font-size: 12px;
+  padding: 8px 12px;
+}

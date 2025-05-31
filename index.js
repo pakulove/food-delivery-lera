@@ -206,14 +206,20 @@ app.get("/api/products", async (req, res) => {
 
         for (const product of categoryProducts) {
           html += `
-            <div class="menu-item" data-product-id="${product.id}">
+            <div class="menu-item ${
+              !product.isactive ? "disabled" : ""
+            }" data-product-id="${product.id}">
               <img src="/${product.image}" alt="${product.name}">
               <div class="menu-content">
                 <h3>${product.name}</h3>
                 <p>${product.description}</p>
                 <div class="price-container">
                   <span class="price">${product.price} ₽</span>
-                  <button class="add-to-cart" onclick="addToCartImmediately(${product.id}, event)">+</button>
+                  ${
+                    product.isactive
+                      ? `<button class="add-to-cart" onclick="addToCartImmediately(${product.id}, event)">+</button>`
+                      : `<button class="add-to-cart disabled" disabled>Нет в наличии</button>`
+                  }
                 </div>
               </div>
             </div>
