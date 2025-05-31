@@ -150,14 +150,11 @@
 
           <div class="order-comment">
             <h3>Комментарий к заказу</h3>
-            <div class="form-group">
-              <textarea
-                id="order-comment"
-                name="comments"
-                placeholder="Напишите комментарий к заказу (необязательно)"
-                rows="3"
-              ></textarea>
-            </div>
+            <textarea
+              id="comments"
+              name="comments"
+              placeholder="Например: позвонить за час до доставки..."
+            ></textarea>
           </div>
 
           <div class="cart-actions">
@@ -378,9 +375,7 @@
           );
 
           // Получаем и добавляем комментарий
-          const comments = document
-            .getElementById("order-comment")
-            .value.trim();
+          const comments = document.getElementById("comments").value.trim();
           formData.append("comments", comments);
 
           // Получаем и добавляем адрес доставки
@@ -392,11 +387,6 @@
               ? "Самовывоз"
               : document.getElementById("delivery-address").value.trim();
           formData.append("delivery-address", deliveryAddress);
-
-          // Получаем и добавляем кастомизацию
-          const customization =
-            document.getElementById("customization")?.value.trim() || "";
-          formData.append("customization", customization);
 
           if (
             document.querySelector('input[name="payment"]:checked').value ===

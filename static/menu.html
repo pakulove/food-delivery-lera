@@ -46,13 +46,24 @@
 
     <script>
       // Базовые функции
-      function showNotification(message, type) {
-        const notification = document.getElementById("notification");
-        notification.textContent = message;
+      function showNotification(message, type = "info") {
+        const notification = document.createElement("div");
         notification.className = `notification ${type}`;
-        notification.style.display = "block";
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        // Показываем уведомление
         setTimeout(() => {
-          notification.style.display = "none";
+          notification.style.display = "block";
+          notification.style.animation = "slideIn 0.3s ease-out";
+        }, 100);
+
+        // Скрываем через 3 секунды
+        setTimeout(() => {
+          notification.style.animation = "slideOut 0.3s ease-out";
+          setTimeout(() => {
+            notification.remove();
+          }, 300);
         }, 3000);
       }
 
@@ -107,7 +118,9 @@
 
       function addToCartWithCustomization(productId) {
         const customization =
-          document.getElementById("item-customization")?.value || "";
+          document.getElementById("item-customization").value;
+        console.log("Adding to cart with customization:", customization);
+
         fetch("/api/cart/add", {
           method: "POST",
           headers: {
@@ -117,16 +130,18 @@
             productid: productId,
             customization: customization,
           }),
-          credentials: "include",
         })
           .then((response) => {
-            if (response.ok) {
-              document.body.dispatchEvent(new Event("cart-updated"));
-              modal.style.display = "none";
-              showNotification("Товар добавлен в корзину", "success");
-            } else if (response.status === 401) {
-              showNotification("Пожалуйста, войдите в систему", "error");
+            if (!response.ok) {
+              if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+              }
+              throw new Error("Network response was not ok");
             }
+            document.body.dispatchEvent(new Event("cart-updated"));
+            closeModal();
+            showNotification("Товар добавлен в корзину", "success");
           })
           .catch((error) => {
             console.error("Error:", error);

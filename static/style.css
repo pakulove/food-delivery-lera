@@ -27,6 +27,10 @@ header h1 {
   padding: 0;
 }
 
+header a:hover {
+  color: black;
+}
+
 .header-content {
   max-width: 1200px;
   margin: 0 auto;
@@ -58,6 +62,10 @@ header h1 {
   font-weight: 500;
   display: flex;
   align-items: center;
+}
+
+.nav-list li a:hover {
+  color: black;
 }
 
 .auth-item {
@@ -106,12 +114,15 @@ header h1 {
   display: inline-block;
 }
 
-.logout-btn {
+
+#logout-btn {
+  margin: 0;
   color: #333;
 }
 
-.logout-btn:hover {
+#logout-btn:hover {
   color: black;
+  margin: 0;
 }
 
 .auth-item button:hover,
@@ -531,7 +542,7 @@ button:disabled {
 }
 
 .add-to-cart-btn {
-  background-color: #4caf50;
+  background-color: #ff9baa;
   color: white;
   padding: 12px 24px;
   border: none;
@@ -542,7 +553,7 @@ button:disabled {
 }
 
 .add-to-cart-btn:hover {
-  background-color: #45a049;
+  background-color: #ff9baa;
 }
 
 /* Стили для сетки меню */
@@ -768,7 +779,7 @@ button:disabled {
 }
 
 .add-to-cart-btn {
-  background-color: #4caf50;
+  background-color: #ff9baa;
   color: white;
   padding: 12px 24px;
   border: none;
@@ -779,7 +790,7 @@ button:disabled {
 }
 
 .add-to-cart-btn:hover {
-  background-color: #45a049;
+  background-color: #ff9baa;
 }
 
 /* Order history styles */
@@ -892,6 +903,14 @@ button:disabled {
   margin-bottom: 30px;
   color: #333;
   font-size: 24px;
+}
+
+#profile-link {
+  margin-left: -55px;
+}
+
+#profile-link:hover {
+  color: black;
 }
 
 .error-message {
@@ -1090,4 +1109,34 @@ button:disabled {
 #order-confirm-modal .cancel:hover {
   background: #e9ecef;
   color: #333;
+}
+
+.order-details {
+  padding: 20px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
+}
+
+.order-details p {
+  margin: 10px 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.order-details strong {
+  color: #333;
+  font-weight: 500;
+}
+
+.order-details .customization {
+  background: #fff;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  border: 1px solid #e0e0e0;
+}
+
+.order-details .customization strong {
+  color: #ff9baa;
 }

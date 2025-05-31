@@ -486,8 +486,9 @@ app.post("/api/cart/add", async (req, res) => {
     `);
   }
 
-  const { productid } = req.body;
+  const { productid, customization } = req.body;
   console.log("Product ID:", productid);
+  console.log("Customization:", customization);
 
   try {
     // Check if product exists
@@ -528,6 +529,29 @@ app.post("/api/cart/add", async (req, res) => {
     if (insertError) {
       console.error("Cart insert error:", insertError);
       throw insertError;
+    }
+
+    // If there's customization, create an order to store it
+    if (customization) {
+      console.log("Saving customization:", customization);
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert([
+          {
+            userid: parseInt(userid),
+            totalamount: 0,
+            orderdate: new Date().toISOString(),
+            customization: customization,
+          },
+        ])
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error("Error saving customization:", orderError);
+        throw orderError;
+      }
+      console.log("Saved customization in order:", order);
     }
 
     console.log("Successfully added to cart:", cartItem);
@@ -595,6 +619,8 @@ app.post("/api/cart/checkout", async (req, res) => {
   }
 
   try {
+    console.log("Checkout request body:", req.body);
+
     // Get cart items
     const { data: items, error: itemsError } = await supabase
       .from("cart")
@@ -621,7 +647,20 @@ app.post("/api/cart/checkout", async (req, res) => {
 
     const total = items.reduce((sum, item) => sum + item.product.price, 0);
 
-    // Create order with additional fields
+    // Get the latest order with customization
+    const { data: lastOrder, error: lastOrderError } = await supabase
+      .from("orders")
+      .select("customization")
+      .eq("userid", userid)
+      .order("orderdate", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (lastOrderError && lastOrderError.code !== "PGRST116") {
+      console.error("Error fetching last order:", lastOrderError);
+    }
+
+    // Create order with customization from last order
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert([
@@ -631,7 +670,7 @@ app.post("/api/cart/checkout", async (req, res) => {
           orderdate: new Date().toISOString(),
           deliveryaddress: req.body["delivery-address"] || null,
           comments: req.body.comments || null,
-          customization: req.body.customization || null,
+          customization: lastOrder?.customization || null,
         },
       ])
       .select()
@@ -641,6 +680,8 @@ app.post("/api/cart/checkout", async (req, res) => {
       console.error("Error creating order:", orderError);
       throw orderError;
     }
+
+    console.log("Created order:", order);
 
     // Add order items
     const orderItems = items.map((item) => ({
@@ -666,7 +707,6 @@ app.post("/api/cart/checkout", async (req, res) => {
 
     if (clearError) {
       console.error("Error clearing cart:", clearError);
-      // Don't throw error here, as order was created successfully
       console.error("Cart was not cleared, but order was created");
     }
 
@@ -794,6 +834,8 @@ app.get("/api/orders", async (req, res) => {
 
     if (ordersError) throw ordersError;
 
+    console.log("Orders data:", JSON.stringify(orders, null, 2));
+
     // Формируем HTML для отображения заказов
     let html = "";
 
@@ -801,6 +843,13 @@ app.get("/api/orders", async (req, res) => {
       html +=
         '<div class="orders-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">';
       orders.forEach((order) => {
+        console.log(
+          "Processing order:",
+          order.id,
+          "Customization:",
+          order.customization
+        );
+
         // Группируем одинаковые товары
         const groupedItems = order.order_items.reduce((acc, item) => {
           const key = item.productid;
@@ -809,7 +858,6 @@ app.get("/api/orders", async (req, res) => {
               product: item.product,
               price: item.price,
               quantity: 1,
-              customization: item.customization,
             };
           } else {
             acc[key].quantity++;
@@ -839,6 +887,11 @@ app.get("/api/orders", async (req, res) => {
                   ? `<p><strong>Комментарий:</strong> ${order.comments}</p>`
                   : ""
               }
+              ${
+                order.customization
+                  ? `<div class="customization"><p><strong>Особые пожелания:</strong> ${order.customization}</p></div>`
+                  : ""
+              }
             </div>
             <div class="order-items">
         `;
@@ -853,11 +906,6 @@ app.get("/api/orders", async (req, res) => {
                   <span class="item-price">${item.price}₽</span>
                   <span class="item-quantity">x${item.quantity}</span>
                 </div>
-                ${
-                  item.customization
-                    ? `<div class="item-customization">${item.customization}</div>`
-                    : ""
-                }
                 <span class="item-total">Итого: ${
                   item.price * item.quantity
                 }₽</span>
@@ -880,6 +928,7 @@ app.get("/api/orders", async (req, res) => {
       `;
     }
 
+    console.log("Generated HTML:", html);
     res.send(html);
   } catch (err) {
     console.error("Error fetching orders:", err);
