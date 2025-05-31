@@ -28,9 +28,6 @@
               <a href="/login.html" id="login-link">Войти</a>
             </li>
             <li>
-              <a href="/register.html" id="register-link">Регистрация</a>
-            </li>
-            <li>
               <a
                 href="/profile.html"
                 id="profile-link"
@@ -61,7 +58,6 @@
         .then((data) => {
           if (data.username) {
             document.getElementById("login-link").style.display = "none";
-            document.getElementById("register-link").style.display = "none";
             document.getElementById("profile-link").style.display =
               "inline-flex";
             document.getElementById("logout-btn").style.display = "inline-flex";

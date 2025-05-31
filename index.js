@@ -429,6 +429,17 @@ app.get("/api/cart/items", async (req, res) => {
   }
 
   try {
+    // Get user's discount
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("discount")
+      .eq("id", userid)
+      .single();
+
+    if (userError) throw userError;
+
+    const discount = user.discount || 0;
+
     const { data: items, error } = await supabase
       .from("cart")
       .select(
@@ -451,21 +462,26 @@ app.get("/api/cart/items", async (req, res) => {
       const key = item.product.id;
       if (!acc[key]) {
         acc[key] = {
-          id: item.id, // ID первой записи для удаления
+          id: item.id,
           product: item.product,
           count: 1,
-          cartIds: [item.id], // Массив всех ID записей этого товара
+          cartIds: [item.id],
         };
       } else {
         acc[key].count++;
-        acc[key].cartIds.push(item.id); // Добавляем ID в массив
+        acc[key].cartIds.push(item.id);
       }
       return acc;
     }, {});
 
     // Преобразуем обратно в массив
     const result = Object.values(groupedItems);
-    res.json(result);
+
+    // Добавляем информацию о скидке
+    res.json({
+      items: result,
+      discount: discount,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Database error" });
@@ -668,8 +684,8 @@ app.post("/api/cart/checkout", async (req, res) => {
     const currentDiscount = user.discount || 0;
     const total = items.reduce((sum, item) => sum + item.product.price, 0);
 
-    // Рассчитываем новую скидку (0.1% от суммы заказа)
-    const discountIncrease = total * 0.001;
+    // Рассчитываем новую скидку (0.01% от суммы заказа)
+    const discountIncrease = total * 0.0001;
     const newDiscount = Math.min(currentDiscount + discountIncrease, 20);
 
     // Обновляем скидку пользователя
@@ -898,6 +914,17 @@ app.get("/api/orders", async (req, res) => {
           return acc;
         }, {});
 
+        // Рассчитываем сумму без скидки
+        const subtotal = order.order_items.reduce(
+          (sum, item) => sum + item.price,
+          0
+        );
+        const discount = (
+          ((subtotal - order.totalamount) / subtotal) *
+          100
+        ).toFixed(1);
+        const discountAmount = (subtotal - order.totalamount).toFixed(2);
+
         html += `
           <div class="order-card">
             <div class="order-header">
@@ -906,7 +933,6 @@ app.get("/api/orders", async (req, res) => {
                 <span class="order-date">${new Date(
                   order.orderdate
                 ).toLocaleDateString("ru-RU")}</span>
-                <span class="order-total">Итого: ${order.totalamount}₽</span>
               </div>
             </div>
             <div class="order-details">
@@ -948,6 +974,26 @@ app.get("/api/orders", async (req, res) => {
         });
 
         html += `
+            </div>
+            <div class="order-total">
+              <div class="price-row">
+                <span>Сумма заказа:</span>
+                <span>${subtotal.toFixed(2)}₽</span>
+              </div>
+              ${
+                discount > 0
+                  ? `
+                <div class="price-row discount">
+                  <span>Ваша скидка (${discount}%):</span>
+                  <span>-${discountAmount}₽</span>
+                </div>
+              `
+                  : ""
+              }
+              <div class="price-row total">
+                <span>Итого к оплате:</span>
+                <span>${order.totalamount.toFixed(2)}₽</span>
+              </div>
             </div>
           </div>
         `;

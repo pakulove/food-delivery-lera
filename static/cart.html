@@ -211,8 +211,8 @@
           let cartHtml = "";
           const orderDetails = document.querySelector(".order-details");
 
-          if (response && response.length > 0) {
-            response.forEach((item) => {
+          if (response.items && response.items.length > 0) {
+            response.items.forEach((item) => {
               totalAmount += item.product.price * item.count;
               cartHtml += `
                 <div class="cart-item">
@@ -232,7 +232,27 @@
                 </div>
               `;
             });
-            cartHtml += `<div id="total-price">Итого: ${totalAmount} ₽</div>`;
+
+            // Добавляем информацию о скидке
+            const discount = response.discount || 0;
+            const discountAmount = ((totalAmount * discount) / 100).toFixed(2);
+            const finalAmount = (totalAmount - discountAmount).toFixed(2);
+
+            cartHtml += `
+              <div id="total-price">
+                <div class="price-row">
+                  <span>Сумма заказа:</span>
+                  <span>${totalAmount.toFixed(2)} ₽</span>
+                </div>
+                <div class="price-row discount">
+                  <span>Ваша скидка (${discount.toFixed(1)}%):</span>
+                  <span>-${discountAmount} ₽</span>
+                </div>
+                <div class="price-row total">
+                  <span>Итого к оплате:</span>
+                  <span>${finalAmount} ₽</span>
+                </div>
+              </div>`;
             orderDetails.style.display = "block";
           } else {
             cartHtml = '<div class="empty-cart"><p>Корзина пуста</p></div>';
@@ -242,7 +262,7 @@
           document.getElementById("cart-items").innerHTML = cartHtml;
           document.getElementById(
             "order-total-amount"
-          ).textContent = `${totalAmount} ₽`;
+          ).textContent = `${finalAmount} ₽`;
         }
       }
 
@@ -341,13 +361,24 @@
         if (!validateCheckout()) {
           return;
         }
-        // Получаем общую сумму из текущего состояния корзины
-        const totalElement = document.getElementById("order-total-amount");
+
+        // Получаем итоговую сумму из блока с ценами
+        const totalElement = document.querySelector(
+          ".price-row.total span:last-child"
+        );
+        if (!totalElement) {
+          showNotification("Ошибка: не удалось получить сумму заказа", "error");
+          return;
+        }
+
         const total = totalElement.textContent;
         if (!total || total === "0 ₽") {
           showNotification("Ошибка: не удалось получить сумму заказа", "error");
           return;
         }
+
+        // Обновляем сумму в модальном окне
+        document.getElementById("order-total-amount").textContent = total;
         document.getElementById("order-confirm-modal").classList.add("visible");
       }
 

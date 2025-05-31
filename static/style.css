@@ -75,10 +75,82 @@ header a:hover {
 }
 
 .auth-container {
-  display: flex;
-  align-items: center;
-  flex-direction: row;
-  gap: 1rem;
+  width: 100%;
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.auth-form h2 {
+  text-align: center;
+  color: #333;
+  font-size: 24px;
+  margin-bottom: 20px;
+  font-weight: 500;
+}
+
+.auth-form .form-group {
+  margin-bottom: 15px;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.auth-form input:focus {
+  border-color: #ff9baa;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 155, 170, 0.1);
+}
+
+.auth-form .btn-primary {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  color: white;
+  justify-content: center;
+  background: #ff9baa;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.auth-form .btn-primary:hover {
+  background: #ff9baa;
+}
+
+.auth-switch {
+  text-align: center;
+  margin-top: 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+.auth-switch a {
+  color: #ff9baa;
+  text-decoration: none;
+  font-weight: 500;
+  margin-left: 5px;
+}
+
+.auth-switch a:hover {
+  color: #ff9baa;
 }
 
 .auth-container .username,
@@ -89,11 +161,6 @@ header a:hover {
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-}
-
-.auth-container button:hover,
-.auth-container a:hover {
-  color: black;
 }
 
 .auth-container,
@@ -905,7 +972,7 @@ button:disabled {
 }
 
 #profile-link {
-  margin-left: -55px;
+  margin-left: -15px;
 }
 
 #profile-link:hover {
