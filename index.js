@@ -4,6 +4,8 @@ const path = require("path");
 const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
 const supabase = require("./config");
+const axios = require("axios");
+const httpsProxyAgent = require("https-proxy-agent");
 const app = express();
 
 // Basic middleware
@@ -424,7 +426,7 @@ app.get("/api/prices", async (req, res) => {
   }
 });
 
-// Cart API endpoints
+// Обновляем эндпоинт корзины
 app.get("/api/cart/items", async (req, res) => {
   const userid = req.cookies.user_id;
   if (!userid) {
@@ -472,6 +474,7 @@ app.get("/api/cart/items", async (req, res) => {
           product: item.product,
           count: 1,
           cartIds: [item.id],
+          discountedPrice: item.product.price * (1 - discount / 100),
         };
       } else {
         acc[key].count++;
@@ -653,7 +656,13 @@ function formatOrderMessage(orderData) {
   message += `👤 <b>Клиент:</b> ${orderData.customer_name}\n`;
   message += `📞 <b>Телефон:</b> <code>${orderData.phone}</code>\n`;
   message += `🏠 <b>Адрес:</b> ${orderData.address}\n`;
-  message += `💵 <b>Сумма:</b> ${orderData.total} руб.\n`;
+  message += `💵 <b>Сумма заказа:</b> ${orderData.total} руб.\n`;
+  if (orderData.discount > 0) {
+    message += `💰 <b>Скидка клиента:</b> ${Number(orderData.discount).toFixed(
+      2
+    )}%\n`;
+    message += `💵 <b>Итоговая сумма со скидкой:</b> ${orderData.final_total} руб.\n`;
+  }
   if (orderData.comments) {
     message += `📝 <b>Комментарий:</b> ${orderData.comments}\n`;
   }
@@ -662,11 +671,15 @@ function formatOrderMessage(orderData) {
   orderData.items.forEach((item) => {
     message += `├ ${item.name}\n`;
     message += `├─ Количество: ${item.quantity}\n`;
-    message += `└─ Цена: ${item.price} руб.\n\n`;
+    message += `├─ Цена: ${item.price} руб.\n`;
+    if (item.customization) {
+      message += `├─ Опции: ${item.customization}\n`;
+    }
+    message += `└─ Итого: ${(item.price * item.quantity).toFixed(2)} руб.\n\n`;
   });
 
   message += `⏱ <b>Время заказа:</b> ${orderData.order_time}\n\n`;
-  message += "@yyoloq @manager";
+  message += "@yyoloq";
 
   return message;
 }
@@ -675,36 +688,34 @@ async function sendToTelegram(message) {
   const maxRetries = 3;
   const retryDelay = 2000; // 2 seconds
 
+  // Настройка прокси (если есть)
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  const httpsAgent = proxyUrl ? new httpsProxyAgent(proxyUrl) : undefined;
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Attempt ${attempt} to send message to Telegram`);
 
-      const response = await fetch(TELEGRAM_API_URL, {
+      const response = await axios({
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        url: TELEGRAM_API_URL,
+        data: {
           chat_id: GROUP_CHAT_ID,
           text: message,
           parse_mode: "HTML",
           disable_notification: false,
-        }),
+        },
+        httpsAgent,
         timeout: 10000, // 10 second timeout
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `Telegram API error: ${errorData.description || response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-      console.log("Telegram API response:", result);
-      return result;
+      console.log("Telegram API response:", response.data);
+      return response.data;
     } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error);
+      console.error(`Attempt ${attempt} failed:`, error.message);
 
       if (attempt === maxRetries) {
         console.error("All attempts to send message to Telegram failed");
@@ -824,11 +835,14 @@ app.post("/api/cart/checkout", async (req, res) => {
       phone: user.phone || "Не указан",
       address: req.body["delivery-address"] || "Не указан",
       total: total.toFixed(2),
+      discount: Number(newDiscount).toFixed(2),
+      final_total: (total * (1 - newDiscount / 100)).toFixed(2),
       comments: req.body.comments || null,
       items: items.map((item) => ({
         name: item.product.name,
         quantity: 1,
         price: item.product.price,
+        customization: order.customization || null,
       })),
       order_time: new Date().toLocaleString("ru-RU"),
     };
@@ -935,6 +949,7 @@ app.post("/api/cart/update/:id", async (req, res) => {
   }
 });
 
+// Обновляем эндпоинт истории заказов
 app.get("/api/orders", async (req, res) => {
   const userid = req.cookies.user_id;
   if (!userid) {
@@ -953,9 +968,9 @@ app.get("/api/orders", async (req, res) => {
         id,
         orderdate,
         totalamount,
-        customization,
         comments,
         deliveryaddress,
+        customization,
         order_items (
           productid,
           price,
@@ -971,46 +986,42 @@ app.get("/api/orders", async (req, res) => {
 
     if (ordersError) throw ordersError;
 
-    console.log("Orders data:", JSON.stringify(orders, null, 2));
-
     // Формируем HTML для отображения заказов
     let html = "";
 
     if (orders && orders.length > 0) {
       html +=
         '<div class="orders-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">';
-      orders.forEach((order) => {
-        console.log(
-          "Processing order:",
-          order.id,
-          "Customization:",
-          order.customization
-        );
 
-        // Группируем одинаковые товары
-        const groupedItems = order.order_items.reduce((acc, item) => {
+      // Фильтруем заказы, убирая пустые
+      const validOrders = orders.filter(
+        (order) => order.order_items && order.order_items.length > 0
+      );
+
+      validOrders.forEach((order) => {
+        // Группируем товары по ID
+        const groupedItems = {};
+        order.order_items.forEach((item) => {
           const key = item.productid;
-          if (!acc[key]) {
-            acc[key] = {
+          if (!groupedItems[key]) {
+            groupedItems[key] = {
               product: item.product,
               price: item.price,
               quantity: 1,
             };
           } else {
-            acc[key].quantity++;
+            groupedItems[key].quantity++;
           }
-          return acc;
-        }, {});
+        });
 
-        // Рассчитываем сумму без скидки
+        // Рассчитываем суммы
         const subtotal = order.order_items.reduce(
           (sum, item) => sum + item.price,
           0
         );
-        const discount = (
-          ((subtotal - order.totalamount) / subtotal) *
-          100
-        ).toFixed(1);
+        const discount = Number(
+          ((subtotal - order.totalamount) / subtotal) * 100
+        ).toFixed(2);
         const discountAmount = (subtotal - order.totalamount).toFixed(2);
 
         html += `
@@ -1036,26 +1047,30 @@ app.get("/api/orders", async (req, res) => {
               }
               ${
                 order.customization
-                  ? `<div class="customization"><p><strong>Особые пожелания:</strong> ${order.customization}</p></div>`
+                  ? `<p><strong>Опции:</strong> ${order.customization}</p>`
                   : ""
               }
             </div>
             <div class="order-items">
         `;
 
-        Object.values(groupedItems).forEach((item) => {
+        // Преобразуем объект в массив и сортируем по названию товара
+        const sortedItems = Object.values(groupedItems).sort((a, b) =>
+          a.product.name.localeCompare(b.product.name)
+        );
+
+        sortedItems.forEach((item) => {
+          const itemTotal = item.price * item.quantity;
           html += `
             <div class="order-item">
               <img src="${item.product.image}" alt="${item.product.name}" />
               <div class="item-details">
                 <h4>${item.product.name}</h4>
                 <div class="item-info">
-                  <span class="item-price">${item.price}₽</span>
+                  <span class="item-price">${item.price.toFixed(2)}₽</span>
                   <span class="item-quantity">x${item.quantity}</span>
                 </div>
-                <span class="item-total">Итого: ${
-                  item.price * item.quantity
-                }₽</span>
+                <span class="item-total">Итого: ${itemTotal.toFixed(2)}₽</span>
               </div>
             </div>
           `;
@@ -1078,10 +1093,6 @@ app.get("/api/orders", async (req, res) => {
               `
                   : ""
               }
-              <div class="price-row total">
-                <span>Итого к оплате:</span>
-                <span>${order.totalamount.toFixed(2)}₽</span>
-              </div>
             </div>
           </div>
         `;
@@ -1095,7 +1106,6 @@ app.get("/api/orders", async (req, res) => {
       `;
     }
 
-    console.log("Generated HTML:", html);
     res.send(html);
   } catch (err) {
     console.error("Error fetching orders:", err);

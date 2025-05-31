@@ -182,7 +182,7 @@
     <div id="order-confirm-modal" class="modal-overlay">
       <div class="modal-content">
         <h3>Подтверждение заказа</h3>
-        <p>Общая сумма к оплате: <span id="order-total-amount"></span></p>
+        <p>Общая сумма к оплате: <span id="confirm-total"></span></p>
         <div class="modal-actions">
           <button class="confirm" id="confirm-order-btn">Подтвердить</button>
           <button class="cancel" id="cancel-order-btn">Отмена</button>
@@ -235,8 +235,10 @@
 
             // Добавляем информацию о скидке
             const discount = response.discount || 0;
-            const discountAmount = ((totalAmount * discount) / 100).toFixed(2);
-            const finalAmount = (totalAmount - discountAmount).toFixed(2);
+            const discountAmount = (totalAmount * (discount / 100)).toFixed(2);
+            const finalAmount = (
+              totalAmount - parseFloat(discountAmount)
+            ).toFixed(2);
 
             cartHtml += `
               <div id="total-price">
@@ -362,7 +364,7 @@
           return;
         }
 
-        // Получаем итоговую сумму из блока с ценами
+        // Получаем итоговую сумму из DOM
         const totalElement = document.querySelector(
           ".price-row.total span:last-child"
         );
@@ -371,21 +373,15 @@
           return;
         }
 
-        const total = totalElement.textContent;
-        if (!total || total === "0 ₽") {
-          showNotification("Ошибка: не удалось получить сумму заказа", "error");
-          return;
-        }
-
-        // Обновляем сумму в модальном окне
-        const orderTotalAmount = document.getElementById("order-total-amount");
-        if (orderTotalAmount) {
-          orderTotalAmount.textContent = total;
-        }
+        const total = totalElement.textContent.replace(" ₽", "");
 
         const modal = document.getElementById("order-confirm-modal");
+        const totalSpan = document.getElementById("confirm-total");
+        if (totalSpan) {
+          totalSpan.textContent = `${total}₽`;
+        }
         if (modal) {
-          modal.classList.add("visible");
+          modal.style.display = "block";
         }
       }
 
