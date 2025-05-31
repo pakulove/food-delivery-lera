@@ -10,7 +10,6 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
     />
-    <script src="script.js"></script>
   </head>
   <body>
     <header>
@@ -111,6 +110,56 @@
             </div>
           </div>
 
+          <div class="delivery-method">
+            <h3>Способ доставки</h3>
+            <div class="delivery-options">
+              <label class="delivery-option">
+                <input
+                  type="radio"
+                  name="delivery"
+                  value="delivery"
+                  checked
+                  onchange="toggleDeliveryFields(true)"
+                />
+                <span>Доставка</span>
+              </label>
+              <label class="delivery-option">
+                <input
+                  type="radio"
+                  name="delivery"
+                  value="pickup"
+                  onchange="toggleDeliveryFields(false)"
+                />
+                <span>Самовывоз</span>
+              </label>
+            </div>
+
+            <div id="delivery-fields" class="delivery-fields">
+              <div class="form-group">
+                <label for="delivery-address">Адрес доставки:</label>
+                <input
+                  type="text"
+                  id="delivery-address"
+                  name="delivery-address"
+                  placeholder="Введите адрес доставки"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="order-comment">
+            <h3>Комментарий к заказу</h3>
+            <div class="form-group">
+              <textarea
+                id="order-comment"
+                name="comments"
+                placeholder="Напишите комментарий к заказу (необязательно)"
+                rows="3"
+              ></textarea>
+            </div>
+          </div>
+
           <div class="cart-actions">
             <button
               class="clear-cart-btn"
@@ -122,14 +171,7 @@
               Очистить корзину
             </button>
 
-            <button
-              class="checkout-btn"
-              hx-post="/api/cart/checkout"
-              hx-include="[name='payment'], [name='card-number'], [name='card-expiry'], [name='card-cvv'], [name='card-holder']"
-              hx-swap="none"
-              hx-on::before-request="validateCheckout(event)"
-              hx-on::after-request="handleCheckoutResponse(event)"
-            >
+            <button class="checkout-btn" onclick="showOrderConfirmModal()">
               Оформить заказ
             </button>
           </div>
@@ -138,6 +180,18 @@
     </main>
 
     <div id="notification" class="notification"></div>
+
+    <!-- Order Confirmation Modal -->
+    <div id="order-confirm-modal" class="modal-overlay">
+      <div class="modal-content">
+        <h3>Подтверждение заказа</h3>
+        <p>Общая сумма к оплате: <span id="order-total-amount"></span></p>
+        <div class="modal-actions">
+          <button class="confirm" id="confirm-order-btn">Подтвердить</button>
+          <button class="cancel" id="cancel-order-btn">Отмена</button>
+        </div>
+      </div>
+    </div>
 
     <script>
       // Показ уведомлений
@@ -152,6 +206,92 @@
         }, 3000);
       }
 
+      // Обработка ответа при загрузке корзины
+      function handleCartResponse(event) {
+        if (event.detail.successful) {
+          const response = JSON.parse(event.detail.xhr.response);
+          let totalAmount = 0;
+          let cartHtml = "";
+          const orderDetails = document.querySelector(".order-details");
+
+          if (response && response.length > 0) {
+            response.forEach((item) => {
+              totalAmount += item.product.price * item.count;
+              cartHtml += `
+                <div class="cart-item">
+                  <img src="${item.product.image}" alt="${item.product.name}" style="width: 80px; height: 80px; object-fit: cover;">
+                  <div class="cart-item-content">
+                    <h3>${item.product.name}</h3>
+                    <p class="price">${item.product.price} ₽</p>
+                  </div>
+                  <div class="quantity-controls">
+                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', -1)">-</button>
+                    <span class="quantity">${item.count}</span>
+                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', 1)">+</button>
+                  </div>
+                  <button class="remove-item" onclick="removeItem('${item.cartIds[0]}')">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              `;
+            });
+            cartHtml += `<div id="total-price">Итого: ${totalAmount} ₽</div>`;
+            orderDetails.style.display = "block";
+          } else {
+            cartHtml = '<div class="empty-cart"><p>Корзина пуста</p></div>';
+            orderDetails.style.display = "none";
+          }
+
+          document.getElementById("cart-items").innerHTML = cartHtml;
+          document.getElementById(
+            "order-total-amount"
+          ).textContent = `${totalAmount} ₽`;
+        }
+      }
+
+      // Функция для удаления товара
+      function removeItem(cartId) {
+        fetch(`/api/cart/remove/${cartId}`, {
+          method: "DELETE",
+        })
+          .then((response) => {
+            if (response.ok) {
+              htmx.trigger("#cart-items", "cart-updated");
+            } else {
+              showNotification("Ошибка при удалении товара", "error");
+            }
+          })
+          .catch((error) => {
+            showNotification("Ошибка при удалении товара", "error");
+          });
+      }
+
+      // Обработка изменения количества товара
+      function updateQuantity(productId, change) {
+        fetch(`/api/cart/update/${productId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ change }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              // Обновляем корзину
+              htmx.trigger("#cart-items", "cart-updated");
+            } else {
+              showNotification(
+                data.error || "Ошибка обновления количества",
+                "error"
+              );
+            }
+          })
+          .catch((error) => {
+            showNotification("Ошибка обновления количества", "error");
+          });
+      }
+
       // Обработка ответа при очистке корзины
       function handleClearCartResponse(event) {
         if (event.detail.successful) {
@@ -163,12 +303,11 @@
       }
 
       // Валидация перед оформлением заказа
-      function validateCheckout(event) {
+      function validateCheckout() {
         const cartItems = document.querySelectorAll(".cart-item");
-        if (cartItems.length === 0) {
-          event.preventDefault();
+        if (!cartItems || cartItems.length === 0) {
           showNotification("Корзина пуста", "error");
-          return;
+          return false;
         }
 
         const paymentMethod = document.querySelector(
@@ -181,24 +320,132 @@
           const cardHolder = document.getElementById("card-holder").value;
 
           if (!cardNumber || !cardExpiry || !cardCVV || !cardHolder) {
-            event.preventDefault();
             showNotification("Пожалуйста, заполните все поля карты", "error");
-            return;
+            return false;
           }
         }
+
+        const deliveryMethod = document.querySelector(
+          "input[name=delivery]:checked"
+        ).value;
+        if (deliveryMethod === "delivery") {
+          const address = document.getElementById("delivery-address").value;
+          if (!address) {
+            showNotification("Пожалуйста, введите адрес доставки", "error");
+            return false;
+          }
+        }
+
+        return true;
       }
 
-      // Обработка ответа при оформлении заказа
-      function handleCheckoutResponse(event) {
-        if (event.detail.successful) {
-          showNotification("Заказ успешно оформлен!", "success");
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-        } else if (event.detail.xhr.status === 401) {
-          showNotification("Пожалуйста, войдите в систему", "error");
+      // Show order confirmation modal
+      function showOrderConfirmModal() {
+        if (!validateCheckout()) {
+          return;
         }
+        // Получаем общую сумму из текущего состояния корзины
+        const totalElement = document.getElementById("order-total-amount");
+        const total = totalElement.textContent;
+        if (!total || total === "0 ₽") {
+          showNotification("Ошибка: не удалось получить сумму заказа", "error");
+          return;
+        }
+        document.getElementById("order-confirm-modal").classList.add("visible");
       }
+
+      // Hide order confirmation modal
+      function hideOrderConfirmModal() {
+        document
+          .getElementById("order-confirm-modal")
+          .classList.remove("visible");
+      }
+
+      // Handle modal confirm button click
+      document
+        .getElementById("confirm-order-btn")
+        .addEventListener("click", function () {
+          const formData = new FormData();
+
+          // Собираем все необходимые данные
+          formData.append(
+            "payment",
+            document.querySelector('input[name="payment"]:checked').value
+          );
+          formData.append(
+            "delivery",
+            document.querySelector('input[name="delivery"]:checked').value
+          );
+          formData.append(
+            "comments",
+            document.getElementById("order-comment").value
+          );
+
+          const deliveryMethod = document.querySelector(
+            'input[name="delivery"]:checked'
+          ).value;
+          formData.append(
+            "delivery-address",
+            deliveryMethod === "pickup"
+              ? "Самовывоз"
+              : document.getElementById("delivery-address").value
+          );
+
+          if (
+            document.querySelector('input[name="payment"]:checked').value ===
+            "card"
+          ) {
+            formData.append(
+              "card-number",
+              document.getElementById("card-number").value
+            );
+            formData.append(
+              "card-expiry",
+              document.getElementById("card-expiry").value
+            );
+            formData.append(
+              "card-cvv",
+              document.getElementById("card-cvv").value
+            );
+            formData.append(
+              "card-holder",
+              document.getElementById("card-holder").value
+            );
+          }
+
+          // Отправляем запрос на оформление заказа
+          fetch("/api/cart/checkout", {
+            method: "POST",
+            body: formData,
+          })
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.success) {
+                showNotification("Заказ успешно оформлен!", "success");
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1000);
+              } else {
+                showNotification(
+                  data.error || "Ошибка оформления заказа",
+                  "error"
+                );
+              }
+            })
+            .catch((error) => {
+              showNotification("Ошибка оформления заказа", "error");
+            })
+            .finally(() => {
+              hideOrderConfirmModal();
+            });
+        });
+
+      // Handle modal cancel button click
+      document
+        .getElementById("cancel-order-btn")
+        .addEventListener("click", function () {
+          hideOrderConfirmModal();
+        });
 
       // Форматирование полей карты
       function formatCardNumber(input) {
@@ -233,12 +480,30 @@
         });
       }
 
+      // Переключение полей доставки
+      function toggleDeliveryFields(show) {
+        const deliveryFields = document.getElementById("delivery-fields");
+        const addressInput = document.getElementById("delivery-address");
+        deliveryFields.style.display = show ? "block" : "none";
+        addressInput.required = show;
+        if (!show) {
+          addressInput.value = "Самовывоз";
+        } else {
+          addressInput.value = "";
+        }
+      }
+
       // Инициализация при загрузке
       document.addEventListener("DOMContentLoaded", function () {
         const paymentMethod = document.querySelector(
           "input[name=payment]:checked"
         ).value;
         toggleCardFields(paymentMethod === "card");
+
+        const deliveryMethod = document.querySelector(
+          "input[name=delivery]:checked"
+        ).value;
+        toggleDeliveryFields(deliveryMethod === "delivery");
       });
     </script>
   </body>

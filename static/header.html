@@ -8,16 +8,20 @@
   </head>
   <body>
     <header>
-      <nav>
-        <ul>
-          <li><a href="/">Главная</a></li>
-          <li><a href="/menu.html">Меню</a></li>
-          <li><a href="/cart.html">Корзина</a></li>
-          <li id="auth-container">
-            <a href="/login.html">Войти</a>
-          </li>
-        </ul>
-      </nav>
+      <div class="header-content">
+        <nav class="main-nav">
+          <ul class="nav-list">
+            <li><a href="/">Главная</a></li>
+            <li><a href="/menu.html">Меню</a></li>
+            <li>
+              <a href="/cart.html" id="cart-link">
+                Корзина <span id="cart-count"></span>
+              </a>
+            </li>
+            <li><div id="auth-links"></div></li>
+          </ul>
+        </nav>
+      </div>
     </header>
     <script>
       function logout() {
@@ -39,27 +43,54 @@
         })
         .then((data) => {
           console.log("Auth data:", data);
-          const authContainer = document.getElementById("auth-container");
+          const authLinks = document.getElementById("auth-links");
           if (data && data.username) {
             console.log("User is authorized:", data.username);
-            authContainer.innerHTML = `
-            <button class="auth-container" onclick="logout()">Выйти</button>
-            <span class="username">Привет, ${data.username}!  </span>
+            authLinks.innerHTML = `
+              <div class="auth-container">
+                <a href="/profile.html" class="username">${data.username}</a>
+                <button onclick="logout()" class="logout-btn">Выйти</button>
+              </div>
             `;
           } else {
             console.log("User is not authorized");
-            authContainer.innerHTML = `
-              <a href="/login.html">Войти</a>
+            authLinks.innerHTML = `
+              <a href="/login.html" class="login-link">Войти</a>
             `;
           }
         })
         .catch((error) => {
           console.error("Auth error:", error);
-          const authContainer = document.getElementById("auth-container");
-          authContainer.innerHTML = `
-            <a href="/login.html">Войти</a>
+          const authLinks = document.getElementById("auth-links");
+          authLinks.innerHTML = `
+            <a href="/login.html" class="login-link">Войти</a>
           `;
         });
+
+      // Функция для обновления количества товаров в корзине
+      function updateCartCount() {
+        fetch("/api/cart/items")
+          .then((response) => response.json())
+          .then((data) => {
+            const cartCount = document.getElementById("cart-count");
+            if (data && data.length > 0) {
+              const totalItems = data.reduce(
+                (sum, item) => sum + item.count,
+                0
+              );
+              cartCount.textContent = `(${totalItems})`;
+            } else {
+              cartCount.textContent = "";
+            }
+          })
+          .catch((error) => console.error("Error fetching cart count:", error));
+      }
+
+      // Обновляем количество при загрузке страницы
+      document.addEventListener("DOMContentLoaded", updateCartCount);
+
+      // Обновляем количество при изменении корзины
+      document.body.addEventListener("cart-updated", updateCartCount);
     </script>
   </body>
 </html>

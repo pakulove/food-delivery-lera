@@ -24,6 +24,10 @@
       "dest": "/static/cart.html"
     },
     {
+      "src": "/profile.html",
+      "dest": "/static/profile.html"
+    },
+    {
       "src": "/login.html",
       "dest": "/static/login.html"
     },

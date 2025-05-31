@@ -1,0 +1,33 @@
+{{#each items}}
+<div class="cart-item">
+  <div class="cart-item-content">
+    <h3>{{product.name}}</h3>
+    <p class="price">{{product.price}} ₽</p>
+  </div>
+  <div class="quantity-controls">
+    <button class="quantity-btn" onclick="updateQuantity('{{product.id}}', -1)">
+      -
+    </button>
+    <span class="quantity">{{quantity}}</span>
+    <button class="quantity-btn" onclick="updateQuantity('{{product.id}}', 1)">
+      +
+    </button>
+  </div>
+  <button
+    class="remove-item"
+    hx-delete="/api/cart/remove/{{product.id}}"
+    hx-swap="none"
+    hx-on::after-request="htmx.trigger('#cart-items', 'cart-updated')"
+  >
+    <i class="fas fa-trash"></i>
+  </button>
+</div>
+{{/each}} {{#if items.length}}
+<div id="total-price">
+  Итого: <span id="cart-total">{{totalAmount}} ₽</span>
+</div>
+{{else}}
+<div class="empty-cart">
+  <p>Корзина пуста</p>
+</div>
+{{/if}}
