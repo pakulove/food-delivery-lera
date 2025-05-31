@@ -642,6 +642,82 @@ app.post("/api/cart/clear", async (req, res) => {
   }
 });
 
+// Настройки Telegram
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const GROUP_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+
+function formatOrderMessage(orderData) {
+  let message = "🛒 <b>НОВЫЙ ЗАКАЗ!</b>\n\n";
+  message += `📋 <b>Номер:</b> #${orderData.order_id}\n`;
+  message += `👤 <b>Клиент:</b> ${orderData.customer_name}\n`;
+  message += `📞 <b>Телефон:</b> <code>${orderData.phone}</code>\n`;
+  message += `🏠 <b>Адрес:</b> ${orderData.address}\n`;
+  message += `💵 <b>Сумма:</b> ${orderData.total} руб.\n`;
+  if (orderData.comments) {
+    message += `📝 <b>Комментарий:</b> ${orderData.comments}\n`;
+  }
+  message += "\n📦 <b>Состав заказа:</b>\n";
+
+  orderData.items.forEach((item) => {
+    message += `├ ${item.name}\n`;
+    message += `├─ Количество: ${item.quantity}\n`;
+    message += `└─ Цена: ${item.price} руб.\n\n`;
+  });
+
+  message += `⏱ <b>Время заказа:</b> ${orderData.order_time}\n\n`;
+  message += "@yyoloq @manager";
+
+  return message;
+}
+
+async function sendToTelegram(message) {
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 seconds
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt} to send message to Telegram`);
+
+      const response = await fetch(TELEGRAM_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: GROUP_CHAT_ID,
+          text: message,
+          parse_mode: "HTML",
+          disable_notification: false,
+        }),
+        timeout: 10000, // 10 second timeout
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `Telegram API error: ${errorData.description || response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+      console.log("Telegram API response:", result);
+      return result;
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+
+      if (attempt === maxRetries) {
+        console.error("All attempts to send message to Telegram failed");
+        return null;
+      }
+
+      // Wait before retrying
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+  return null;
+}
+
 app.post("/api/cart/checkout", async (req, res) => {
   const userid = req.cookies.user_id;
   if (!userid) {
@@ -678,10 +754,10 @@ app.post("/api/cart/checkout", async (req, res) => {
       return res.status(400).json({ error: "Корзина пуста" });
     }
 
-    // Получаем текущую скидку пользователя
+    // Получаем информацию о пользователе
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("discount")
+      .select("username, phone, address, discount")
       .eq("id", userid)
       .single();
 
@@ -702,20 +778,7 @@ app.post("/api/cart/checkout", async (req, res) => {
 
     if (updateError) throw updateError;
 
-    // Get the latest order with customization
-    const { data: lastOrder, error: lastOrderError } = await supabase
-      .from("orders")
-      .select("customization")
-      .eq("userid", userid)
-      .order("orderdate", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (lastOrderError && lastOrderError.code !== "PGRST116") {
-      console.error("Error fetching last order:", lastOrderError);
-    }
-
-    // Create order with customization from last order
+    // Create order with customization from current request
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .insert([
@@ -725,7 +788,7 @@ app.post("/api/cart/checkout", async (req, res) => {
           orderdate: new Date().toISOString(),
           deliveryaddress: req.body["delivery-address"] || null,
           comments: req.body.comments || null,
-          customization: lastOrder?.customization || null,
+          customization: req.body.customization || null, // Используем кастомизацию из текущего запроса
         },
       ])
       .select()
@@ -753,6 +816,25 @@ app.post("/api/cart/checkout", async (req, res) => {
       console.error("Error adding order items:", itemsInsertError);
       throw itemsInsertError;
     }
+
+    // После успешного создания заказа отправляем уведомление в Telegram
+    const orderData = {
+      order_id: order.id,
+      customer_name: user.username,
+      phone: user.phone || "Не указан",
+      address: req.body["delivery-address"] || "Не указан",
+      total: total.toFixed(2),
+      comments: req.body.comments || null,
+      items: items.map((item) => ({
+        name: item.product.name,
+        quantity: 1,
+        price: item.product.price,
+      })),
+      order_time: new Date().toLocaleString("ru-RU"),
+    };
+
+    const message = formatOrderMessage(orderData);
+    await sendToTelegram(message);
 
     // Clear cart only after successful order creation
     const { error: clearError } = await supabase

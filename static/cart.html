@@ -378,8 +378,15 @@
         }
 
         // Обновляем сумму в модальном окне
-        document.getElementById("order-total-amount").textContent = total;
-        document.getElementById("order-confirm-modal").classList.add("visible");
+        const orderTotalAmount = document.getElementById("order-total-amount");
+        if (orderTotalAmount) {
+          orderTotalAmount.textContent = total;
+        }
+
+        const modal = document.getElementById("order-confirm-modal");
+        if (modal) {
+          modal.classList.add("visible");
+        }
       }
 
       // Hide order confirmation modal
@@ -392,83 +399,184 @@
       // Handle modal confirm button click
       document
         .getElementById("confirm-order-btn")
-        .addEventListener("click", function () {
-          const formData = new FormData();
+        .addEventListener("click", async function () {
+          try {
+            // Проверяем валидацию
+            if (!validateCheckout()) {
+              hideOrderConfirmModal();
+              return;
+            }
 
-          // Собираем все необходимые данные
-          formData.append(
-            "payment",
-            document.querySelector('input[name="payment"]:checked').value
-          );
-          formData.append(
-            "delivery",
-            document.querySelector('input[name="delivery"]:checked').value
-          );
-
-          // Получаем и добавляем комментарий
-          const comments = document.getElementById("comments").value.trim();
-          formData.append("comments", comments);
-
-          // Получаем и добавляем адрес доставки
-          const deliveryMethod = document.querySelector(
-            'input[name="delivery"]:checked'
-          ).value;
-          const deliveryAddress =
-            deliveryMethod === "pickup"
-              ? "Самовывоз"
-              : document.getElementById("delivery-address").value.trim();
-          formData.append("delivery-address", deliveryAddress);
-
-          if (
-            document.querySelector('input[name="payment"]:checked').value ===
-            "card"
-          ) {
-            formData.append(
-              "card-number",
-              document.getElementById("card-number").value
+            // Получаем итоговую сумму из DOM
+            const totalElement = document.querySelector(
+              ".price-row.total span:last-child"
             );
-            formData.append(
-              "card-expiry",
-              document.getElementById("card-expiry").value
-            );
-            formData.append(
-              "card-cvv",
-              document.getElementById("card-cvv").value
-            );
-            formData.append(
-              "card-holder",
-              document.getElementById("card-holder").value
-            );
-          }
+            if (!totalElement) {
+              showNotification(
+                "Ошибка: не удалось получить сумму заказа",
+                "error"
+              );
+              hideOrderConfirmModal();
+              return;
+            }
 
-          // Отправляем запрос на оформление заказа
-          fetch("/api/cart/checkout", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams(formData),
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.success) {
+            const total = totalElement.textContent.replace(" ₽", "");
+
+            // Получаем способ доставки
+            const deliveryMethodElement = document.querySelector(
+              'input[name="delivery"]:checked'
+            );
+            if (!deliveryMethodElement) {
+              showNotification("Пожалуйста, выберите способ доставки", "error");
+              hideOrderConfirmModal();
+              return;
+            }
+            const deliveryMethod = deliveryMethodElement.value;
+
+            // Формируем адрес доставки в зависимости от способа
+            let deliveryAddress = "Самовывоз";
+            if (deliveryMethod === "delivery") {
+              const addressInput = document.getElementById("delivery-address");
+              if (!addressInput) {
+                showNotification("Ошибка: поле адреса не найдено", "error");
+                hideOrderConfirmModal();
+                return;
+              }
+              if (!addressInput.value.trim()) {
+                showNotification("Пожалуйста, введите адрес доставки", "error");
+                hideOrderConfirmModal();
+                return;
+              }
+              deliveryAddress = addressInput.value.trim();
+            }
+
+            // Получаем комментарий к заказу
+            const commentsInput = document.getElementById("comments");
+            const comments = commentsInput ? commentsInput.value.trim() : "";
+
+            // Получаем способ оплаты
+            const paymentMethodElement = document.querySelector(
+              'input[name="payment"]:checked'
+            );
+            if (!paymentMethodElement) {
+              showNotification("Пожалуйста, выберите способ оплаты", "error");
+              hideOrderConfirmModal();
+              return;
+            }
+            const paymentMethod = paymentMethodElement.value;
+
+            // Собираем данные карты, если выбран этот способ оплаты
+            let cardData = {};
+            if (paymentMethod === "card") {
+              const cardNumber = document.getElementById("card-number");
+              const cardExpiry = document.getElementById("card-expiry");
+              const cardCVV = document.getElementById("card-cvv");
+              const cardHolder = document.getElementById("card-holder");
+
+              if (!cardNumber || !cardExpiry || !cardCVV || !cardHolder) {
+                showNotification("Ошибка: не все поля карты найдены", "error");
+                hideOrderConfirmModal();
+                return;
+              }
+
+              if (
+                !cardNumber.value ||
+                !cardExpiry.value ||
+                !cardCVV.value ||
+                !cardHolder.value
+              ) {
+                showNotification(
+                  "Пожалуйста, заполните все поля карты",
+                  "error"
+                );
+                hideOrderConfirmModal();
+                return;
+              }
+
+              cardData = {
+                "card-number": cardNumber.value,
+                "card-expiry": cardExpiry.value,
+                "card-cvv": cardCVV.value,
+                "card-holder": cardHolder.value,
+              };
+            }
+
+            // Подготавливаем данные для отправки
+            const orderData = {
+              "delivery-address": deliveryAddress,
+              comments: comments,
+              payment: paymentMethod,
+              delivery: deliveryMethod,
+              total: total,
+              customization:
+                document.getElementById("item-customization")?.value || null,
+              ...cardData,
+            };
+
+            console.log("Sending order data:", orderData);
+
+            // Создаем AbortController для таймаута
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд таймаут
+
+            try {
+              const response = await fetch("/api/cart/checkout", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify(orderData),
+                credentials: "include",
+                signal: controller.signal,
+              });
+
+              clearTimeout(timeoutId); // Очищаем таймаут при успешном ответе
+
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+
+              const result = await response.json();
+              console.log("Server response:", result);
+
+              if (result.success) {
                 showNotification("Заказ успешно оформлен!", "success");
+                // Очищаем корзину и обновляем интерфейс
+                const cartItems = document.getElementById("cart-items");
+                const totalPrice = document.getElementById("total-price");
+                if (cartItems) cartItems.innerHTML = "";
+                if (totalPrice) totalPrice.textContent = "0 ₽";
+                document.body.dispatchEvent(new Event("cart-updated"));
+                hideOrderConfirmModal();
                 setTimeout(() => {
                   window.location.reload();
                 }, 1000);
               } else {
                 showNotification(
-                  data.error || "Ошибка оформления заказа",
+                  result.error || "Ошибка оформления заказа",
                   "error"
                 );
+                hideOrderConfirmModal();
               }
-            })
-            .catch((error) => {
-              showNotification("Ошибка оформления заказа", "error");
-            })
-            .finally(() => {
-              hideOrderConfirmModal();
-            });
+            } catch (fetchError) {
+              clearTimeout(timeoutId); // Очищаем таймаут при ошибке
+
+              if (fetchError.name === "AbortError") {
+                throw new Error(
+                  "Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте позже."
+                );
+              }
+              throw fetchError;
+            }
+          } catch (error) {
+            console.error("Error details:", error);
+            showNotification(
+              "Ошибка оформления заказа: " + error.message,
+              "error"
+            );
+            hideOrderConfirmModal();
+          }
         });
 
       // Handle modal cancel button click
