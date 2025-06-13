@@ -3,7 +3,7 @@ const express = require("express");
 const path = require("path");
 const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
-const supabase = require("./config");
+const { query } = require("./config");
 const axios = require("axios");
 const httpsProxyAgent = require("https-proxy-agent");
 const app = express();
@@ -43,17 +43,12 @@ app.post("/api/auth/register", async (req, res) => {
 
   try {
     // Check if user already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("username", username)
-      .single();
+    const { rows: existingUsers } = await query(
+      "SELECT id FROM users WHERE username = $1",
+      [username]
+    );
 
-    if (checkError && checkError.code !== "PGRST116") {
-      throw checkError;
-    }
-
-    if (existingUser) {
+    if (existingUsers.length > 0) {
       return res.status(400).json({ error: "Пользователь уже существует" });
     }
 
@@ -61,21 +56,14 @@ app.post("/api/auth/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const { data: newUser, error: createError } = await supabase
-      .from("users")
-      .insert([
-        {
-          username,
-          password: hashedPassword,
-          email: email || null,
-          phone: phone || null,
-          address: address || null,
-        },
-      ])
-      .select()
-      .single();
-
-    if (createError) throw createError;
+    const {
+      rows: [newUser],
+    } = await query(
+      `INSERT INTO users (username, password, email, phone, address)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [username, hashedPassword, email || null, phone || null, address || null]
+    );
 
     // Set cookie
     res.cookie("user_id", newUser.id, {
@@ -101,13 +89,11 @@ app.post("/api/auth/login", async (req, res) => {
 
   try {
     // Get user
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("id, password")
-      .eq("username", username)
-      .single();
-
-    if (error) throw error;
+    const {
+      rows: [user],
+    } = await query("SELECT id, password FROM users WHERE username = $1", [
+      username,
+    ]);
 
     if (!user) {
       return res
@@ -144,26 +130,23 @@ app.post("/api/auth/logout", (req, res) => {
   res.send('<a href="/login.html">Войти</a>');
 });
 
-app.get("/api/auth/me", (req, res) => {
+app.get("/api/auth/me", async (req, res) => {
   const userid = req.cookies.user_id;
   if (userid) {
-    supabase
-      .from("users")
-      .select("username")
-      .eq("id", userid)
-      .single()
-      .then(({ data: user, error }) => {
-        if (error) throw error;
-        if (user) {
-          res.json({ username: user.username });
-          return;
-        }
-        res.status(401).json({ error: "Not authorized" });
-      })
-      .catch((err) => {
-        console.error(err);
-        res.status(401).json({ error: "Not authorized" });
-      });
+    try {
+      const {
+        rows: [user],
+      } = await query("SELECT username FROM users WHERE id = $1", [userid]);
+
+      if (user) {
+        res.json({ username: user.username });
+        return;
+      }
+      res.status(401).json({ error: "Not authorized" });
+    } catch (err) {
+      console.error(err);
+      res.status(401).json({ error: "Not authorized" });
+    }
   } else {
     res.status(401).json({ error: "Not authorized" });
   }
@@ -177,21 +160,12 @@ app.get("/", (req, res) => {
 app.get("/api/products", async (req, res) => {
   try {
     // First get categories ordered by displayorder
-    const { data: categories, error: categoriesError } = await supabase
-      .from("categories")
-      .select("*")
-      .order("displayorder");
-
-    if (categoriesError) throw categoriesError;
-    console.log("Categories:", categories);
+    const { rows: categories } = await query(
+      "SELECT * FROM categories ORDER BY displayorder"
+    );
 
     // Then get all products
-    const { data: products, error: productsError } = await supabase
-      .from("products")
-      .select("*");
-
-    if (productsError) throw productsError;
-    console.log("Products:", products);
+    const { rows: products } = await query("SELECT * FROM products");
 
     let html = "";
 
@@ -232,7 +206,6 @@ app.get("/api/products", async (req, res) => {
       }
     }
 
-    console.log("Generated HTML length:", html.length);
     res.send(html);
   } catch (err) {
     console.error(err);
@@ -240,54 +213,20 @@ app.get("/api/products", async (req, res) => {
   }
 });
 
-// Helper function to get emoji for category
-function getCategoryEmoji(category) {
-  if (!category) return "🍽️";
-
-  const emojiMap = {
-    Пицца: "🍕",
-    Суши: "🍣",
-    Бургеры: "🍔",
-    Салаты: "🥗",
-    Напитки: "🥤",
-    Десерты: "🍰",
-    pizza: "🍕",
-    sushi: "🍣",
-    burgers: "🍔",
-    salads: "🥗",
-    drinks: "🥤",
-    desserts: "🍰",
-  };
-
-  // Try both exact match and lowercase match
-  return emojiMap[category] || emojiMap[category.toLowerCase()] || "🍽️";
-}
-
 // Add endpoint for menu item details
 app.get("/api/products/:id", async (req, res) => {
   console.log("GET /api/products/:id - Request received");
   console.log("Product ID:", req.params.id);
 
   try {
-    const { data: product, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
-
-    console.log("Raw Supabase response:", { product, error });
-
-    if (error) {
-      console.error("Supabase error:", error);
-      throw error;
-    }
+    const {
+      rows: [product],
+    } = await query("SELECT * FROM products WHERE id = $1", [req.params.id]);
 
     if (!product) {
       console.log("Product not found");
       return res.status(404).send("Product not found");
     }
-
-    console.log("Product data:", product);
 
     // Формируем HTML для модального окна
     const html = `
@@ -333,7 +272,6 @@ app.get("/api/products/:id", async (req, res) => {
         </div>
       </div>
     `;
-    console.log("Generated HTML:", html);
     res.send(html);
   } catch (error) {
     console.error("Error in /api/products/:id:", error);
@@ -341,92 +279,7 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
-// Добавим новый эндпоинт для получения категорий
-app.get("/api/categories", async (req, res) => {
-  try {
-    const { data: products, error } = await supabase
-      .from("products")
-      .select("category");
-
-    console.log("Supabase response:", { products, error });
-
-    if (error) {
-      console.error("Supabase error:", error);
-      throw error;
-    }
-
-    // Получаем уникальные категории и сортируем их
-    const categories = [...new Set(products.map((p) => p.category))]
-      .filter(Boolean)
-      .sort();
-    console.log("Extracted categories:", categories);
-
-    // Генерируем HTML для select
-    const options = categories
-      .map((category) => `<option value="${category}">${category}</option>`)
-      .join("");
-
-    console.log("Generated HTML:", options);
-    res.send(options);
-  } catch (error) {
-    console.error("Error in /api/categories:", error);
-    res.status(500).send("Error fetching categories");
-  }
-});
-
-// Обновим эндпоинт получения цен для поддержки фильтрации
-app.get("/api/prices", async (req, res) => {
-  const { category } = req.query;
-
-  try {
-    let query = supabase.from("products").select("*");
-
-    if (category && category !== "all") {
-      query = query.eq("category", category);
-    }
-
-    const { data: products, error } = await query;
-
-    if (error) throw error;
-
-    // Генерируем HTML для списка продуктов
-    let productsHtml = "";
-    products.forEach((product) => {
-      productsHtml += `
-        <div class="price-item">
-          <img src="${product.image}" alt="${product.name}" />
-          <h2>${product.name}</h2>
-          <p>Цена: ${product.price} ₽/день</p>
-          <div class="price-info">
-            <p>⚙️ Характеристики:</p>
-            <ul>
-              ${product.characteristic
-                .split(", ")
-                .map((char) => `<li>${char}</li>`)
-                .join("")}
-            </ul>
-          </div>
-          <button
-            hx-post="/api/cart/add"
-            hx-vals='{"productid": ${product.id}}'
-            hx-swap="none"
-            hx-trigger="click"
-            hx-on::after-request="document.body.dispatchEvent(new Event('cart-updated'))"
-          >
-            Добавить в корзину
-          </button>
-        </div>
-      `;
-    });
-
-    res.send(productsHtml);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Ошибка базы данных");
-  }
-});
-
-// Обновляем эндпоинт корзины
+// Cart endpoints
 app.get("/api/cart/items", async (req, res) => {
   const userid = req.cookies.user_id;
   if (!userid) {
@@ -438,43 +291,35 @@ app.get("/api/cart/items", async (req, res) => {
 
   try {
     // Get user's discount
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("discount")
-      .eq("id", userid)
-      .single();
-
-    if (userError) throw userError;
+    const {
+      rows: [user],
+    } = await query("SELECT discount FROM users WHERE id = $1", [userid]);
 
     const discount = user.discount || 0;
 
-    const { data: items, error } = await supabase
-      .from("cart")
-      .select(
-        `
-        id,
-        product:productid (
-          id,
-          name,
-          price,
-          image
-        )
-      `
-      )
-      .eq("userid", userid);
-
-    if (error) throw error;
+    const { rows: items } = await query(
+      `SELECT c.id, p.id as product_id, p.name, p.price, p.image
+       FROM cart c
+       JOIN products p ON c.productid = p.id
+       WHERE c.userid = $1`,
+      [userid]
+    );
 
     // Группируем товары и считаем количество
     const groupedItems = items.reduce((acc, item) => {
-      const key = item.product.id;
+      const key = `${item.product_id}`;
       if (!acc[key]) {
         acc[key] = {
           id: item.id,
-          product: item.product,
+          product: {
+            id: item.product_id,
+            name: item.name,
+            price: item.price,
+            image: item.image,
+          },
           count: 1,
           cartIds: [item.id],
-          discountedPrice: item.product.price * (1 - discount / 100),
+          discountedPrice: item.price * (1 - discount / 100),
         };
       } else {
         acc[key].count++;
@@ -511,25 +356,14 @@ app.post("/api/cart/add", async (req, res) => {
     `);
   }
 
-  const { productid, customization } = req.body;
+  const { productid } = req.body;
   console.log("Product ID:", productid);
-  console.log("Customization:", customization);
 
   try {
     // Check if product exists
-    const { data: product, error: productError } = await supabase
-      .from("products")
-      .select("id")
-      .eq("id", productid)
-      .single();
-
-    console.log("Product check result:", product);
-    console.log("Product check error:", productError);
-
-    if (productError) {
-      console.error("Product check error:", productError);
-      throw productError;
-    }
+    const {
+      rows: [product],
+    } = await query("SELECT id FROM products WHERE id = $1", [productid]);
 
     if (!product) {
       console.log("Product not found:", productid);
@@ -537,49 +371,14 @@ app.post("/api/cart/add", async (req, res) => {
     }
 
     // Add to cart
-    const { data: cartItem, error: insertError } = await supabase
-      .from("cart")
-      .insert([
-        {
-          userid: parseInt(userid),
-          productid: parseInt(productid),
-        },
-      ])
-      .select()
-      .single();
+    const { rows } = await query(
+      `INSERT INTO cart (userid, productid)
+       VALUES ($1, $2)
+       RETURNING *`,
+      [parseInt(userid), parseInt(productid)]
+    );
 
-    console.log("Cart insert result:", cartItem);
-    console.log("Cart insert error:", insertError);
-
-    if (insertError) {
-      console.error("Cart insert error:", insertError);
-      throw insertError;
-    }
-
-    // If there's customization, create an order to store it
-    if (customization) {
-      console.log("Saving customization:", customization);
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .insert([
-          {
-            userid: parseInt(userid),
-            totalamount: 0,
-            orderdate: new Date().toISOString(),
-            customization: customization,
-          },
-        ])
-        .select()
-        .single();
-
-      if (orderError) {
-        console.error("Error saving customization:", orderError);
-        throw orderError;
-      }
-      console.log("Saved customization in order:", order);
-    }
-
-    console.log("Successfully added to cart:", cartItem);
+    console.log("Successfully added to cart:", rows[0]);
     res.sendStatus(204);
   } catch (err) {
     console.error("Cart add error:", err);
@@ -599,23 +398,22 @@ app.delete("/api/cart/remove/:id", async (req, res) => {
 
   try {
     // Сначала получаем productid удаляемого товара
-    const { data: cartItem, error: getError } = await supabase
-      .from("cart")
-      .select("productid")
-      .eq("id", req.params.id)
-      .eq("userid", userid)
-      .single();
+    const {
+      rows: [cartItem],
+    } = await query(
+      "SELECT productid FROM cart WHERE id = $1 AND userid = $2",
+      [req.params.id, userid]
+    );
 
-    if (getError) throw getError;
+    if (!cartItem) {
+      return res.status(404).json({ error: "Товар не найден в корзине" });
+    }
 
     // Удаляем все записи этого товара из корзины
-    const { error } = await supabase
-      .from("cart")
-      .delete()
-      .eq("userid", userid)
-      .eq("productid", cartItem.productid);
-
-    if (error) throw error;
+    await query("DELETE FROM cart WHERE userid = $1 AND productid = $2", [
+      userid,
+      cartItem.productid,
+    ]);
 
     res.sendStatus(204);
   } catch (err) {
@@ -634,14 +432,403 @@ app.post("/api/cart/clear", async (req, res) => {
   }
 
   try {
-    const { error } = await supabase.from("cart").delete().eq("userid", userid);
-
-    if (error) throw error;
-
+    await query("DELETE FROM cart WHERE userid = $1", [userid]);
     res.sendStatus(204);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Ошибка базы данных" });
+  }
+});
+
+// Обработчик изменения количества товара в корзине
+app.post("/api/cart/update/:id", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) return res.status(401).json({ error: "Not authenticated" });
+
+  const cartId = req.params.id;
+  const { change } = req.body;
+
+  // Получаем текущий элемент корзины
+  const {
+    rows: [cartItem],
+  } = await query("SELECT * FROM cart WHERE id = $1 AND userid = $2", [
+    cartId,
+    userid,
+  ]);
+  if (!cartItem) return res.status(404).json({ error: "Item not found" });
+
+  if (change === 1) {
+    // Добавить ещё одну такую же строку (без customization)
+    await query("INSERT INTO cart (userid, productid) VALUES ($1, $2)", [
+      userid,
+      cartItem.productid,
+    ]);
+  } else if (change === -1) {
+    // Удалить одну строку
+    await query("DELETE FROM cart WHERE id = $1 AND userid = $2", [
+      cartId,
+      userid,
+    ]);
+  }
+  res.json({ success: true });
+});
+
+// Checkout endpoint
+app.post("/api/cart/checkout", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.status(401).json({
+      error: "Not authenticated",
+      redirect: "/login.html",
+    });
+  }
+
+  try {
+    console.log("Checkout request body:", req.body);
+
+    // Get cart items
+    const { rows: items } = await query(
+      `SELECT c.id, p.id as product_id, p.name, p.price
+       FROM cart c
+       JOIN products p ON c.productid = p.id
+       WHERE c.userid = $1`,
+      [userid]
+    );
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ error: "Корзина пуста" });
+    }
+
+    // Получаем информацию о пользователе
+    const {
+      rows: [user],
+    } = await query(
+      "SELECT username, phone, address, discount FROM users WHERE id = $1",
+      [userid]
+    );
+
+    const currentDiscount = user.discount || 0;
+    const total = items.reduce((sum, item) => sum + item.price, 0);
+    const finalAmount = Math.round(total * (1 - currentDiscount / 100));
+
+    // Рассчитываем новую скидку (0.01% от суммы заказа)
+    const discountIncrease = total * 0.0001;
+    const newDiscount = Math.min(currentDiscount + discountIncrease, 20);
+
+    // Обновляем скидку пользователя
+    await query("UPDATE users SET discount = $1 WHERE id = $2", [
+      newDiscount,
+      userid,
+    ]);
+
+    // Create order with customization
+    const {
+      rows: [order],
+    } = await query(
+      `INSERT INTO orders (userid, totalamount, deliveryaddress, comments, customization)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        parseInt(userid),
+        finalAmount,
+        req.body["delivery-address"] || null,
+        req.body.comments || null,
+        req.body.customization || null,
+      ]
+    );
+
+    // Add order items
+    const orderItems = items.map((item) => ({
+      orderid: order.id,
+      productid: item.product_id,
+      price: item.price,
+    }));
+
+    for (const item of orderItems) {
+      await query(
+        `INSERT INTO order_items (orderid, productid, price)
+         VALUES ($1, $2, $3)`,
+        [item.orderid, item.productid, item.price]
+      );
+    }
+
+    // После успешного создания заказа отправляем уведомление в Telegram
+    const orderData = {
+      order_id: order.id,
+      customer_name: user.username,
+      phone: user.phone || "Не указан",
+      address: req.body["delivery-address"] || "Не указан",
+      total: total.toFixed(2),
+      discount: Number(currentDiscount).toFixed(2),
+      final_total: finalAmount.toFixed(2),
+      comments: req.body.comments || null,
+      customization: req.body.customization || null,
+      items: items.map((item) => ({
+        name: item.name,
+        quantity: 1,
+        price: item.price,
+      })),
+      order_time: new Date().toLocaleString("ru-RU"),
+    };
+
+    const message = formatOrderMessage(orderData);
+    await sendToTelegram(message);
+
+    // Clear cart only after successful order creation
+    await query("DELETE FROM cart WHERE userid = $1", [userid]);
+
+    res.json({ success: true, message: "Заказ успешно создан" });
+  } catch (err) {
+    console.error("Checkout error:", err);
+    res.status(500).json({ error: "Ошибка при оформлении заказа" });
+  }
+});
+
+// Orders endpoint
+app.get("/api/orders", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.status(401).json({
+      error: "Not authenticated",
+      redirect: "/login.html",
+    });
+  }
+
+  try {
+    // Получаем все заказы пользователя с информацией о товарах
+    const { rows: orders } = await query(
+      `SELECT o.*, 
+              COALESCE(
+                json_agg(
+                  CASE 
+                    WHEN oi.id IS NOT NULL THEN
+                      json_build_object(
+                        'id', oi.id,
+                        'productid', oi.productid,
+                        'price', oi.price,
+                        'customization', o.customization,
+                        'product', json_build_object(
+                          'name', p.name,
+                          'image', p.image
+                        )
+                      )
+                    ELSE NULL
+                  END
+                ) FILTER (WHERE oi.id IS NOT NULL),
+                '[]'::json
+              ) as order_items
+       FROM orders o
+       LEFT JOIN order_items oi ON o.id = oi.orderid
+       LEFT JOIN products p ON oi.productid = p.id
+       WHERE o.userid = $1
+       GROUP BY o.id
+       ORDER BY o.orderdate DESC`,
+      [userid]
+    );
+
+    // Формируем HTML для отображения заказов
+    let html = "";
+
+    if (orders && orders.length > 0) {
+      html +=
+        '<div class="orders-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">';
+
+      // Фильтруем заказы, убирая пустые
+      const validOrders = orders.filter(
+        (order) =>
+          order.order_items &&
+          order.order_items.length > 0 &&
+          order.order_items[0] !== null
+      );
+
+      if (validOrders.length === 0) {
+        html = `
+          <div class="empty-orders">
+            <p>У вас пока нет заказов</p>
+          </div>
+        `;
+      } else {
+        validOrders.forEach((order) => {
+          // Рассчитываем суммы
+          const subtotal = order.order_items.reduce(
+            (sum, item) => sum + (item.price || 0),
+            0
+          );
+          const discount = order.totalamount
+            ? Number(((subtotal - order.totalamount) / subtotal) * 100).toFixed(
+                2
+              )
+            : 0;
+          const discountAmount = order.totalamount
+            ? (subtotal - order.totalamount).toFixed(2)
+            : 0;
+
+          html += `
+            <div class="order-card">
+              <div class="order-header">
+                <h3>Заказ #${order.id}</h3>
+                <div class="order-info">
+                  <span class="order-date">${new Date(
+                    order.orderdate
+                  ).toLocaleDateString("ru-RU")}</span>
+                </div>
+              </div>
+              <div class="order-details">
+                ${
+                  order.deliveryaddress
+                    ? `<p><strong>Адрес доставки:</strong> ${order.deliveryaddress}</p>`
+                    : ""
+                }
+                ${
+                  order.comments
+                    ? `<p><strong>Комментарий:</strong> ${order.comments}</p>`
+                    : ""
+                }
+                ${
+                  order.customization
+                    ? `<p><strong>Опции:</strong> ${order.customization}</p>`
+                    : ""
+                }
+              </div>
+              <div class="order-items">
+          `;
+
+          // Сортируем товары по названию
+          const sortedItems = order.order_items.sort((a, b) =>
+            a.product.name.localeCompare(b.product.name)
+          );
+
+          sortedItems.forEach((item) => {
+            html += `
+              <div class="order-item">
+                <img src="${item.product.image}" alt="${item.product.name}" />
+                <div class="item-details">
+                  <h4>${item.product.name}</h4>
+                  <div class="item-info">
+                    <span class="item-price">${(item.price || 0).toFixed(
+                      2
+                    )}₽</span>
+                    <span class="item-quantity">x1</span>
+                  </div>
+                  <span class="item-total">Итого: ${(item.price || 0).toFixed(
+                    2
+                  )}₽</span>
+                  ${
+                    item.customization
+                      ? `<p class="customization">Опции: ${item.customization}</p>`
+                      : ""
+                  }
+                </div>
+              </div>
+            `;
+          });
+
+          html += `
+              </div>
+              <div class="order-total">
+                <div class="price-row">
+                  <span>Сумма заказа:</span>
+                  <span>${subtotal.toFixed(2)}₽</span>
+                </div>
+                ${
+                  discount > 0
+                    ? `
+                  <div class="price-row discount">
+                    <span>Скидка (${discount}%):</span>
+                    <span>-${discountAmount}₽</span>
+                  </div>
+                `
+                    : ""
+                }
+                <div class="price-row final">
+                  <span>Итого к оплате:</span>
+                  <span>${(order.totalamount || subtotal).toFixed(2)}₽</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        html += "</div>";
+      }
+    } else {
+      html = `
+        <div class="empty-orders">
+          <p>У вас пока нет заказов</p>
+        </div>
+      `;
+    }
+
+    res.send(html);
+  } catch (err) {
+    console.error("Error fetching orders:", err);
+    res.status(500).send(`
+      <div class="error-message">
+        Произошла ошибка при загрузке заказов
+      </div>
+    `);
+  }
+});
+
+// Cart size endpoint
+app.get("/api/cart/size", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.send("(0)");
+  }
+
+  try {
+    const { rows } = await query(
+      "SELECT COUNT(*) as count FROM cart WHERE userid = $1",
+      [userid]
+    );
+
+    const size = rows[0].count;
+    res.send(`(${size})`);
+  } catch (err) {
+    console.error(err);
+    res.send("(0)");
+  }
+});
+
+// User discount endpoint
+app.get("/api/user/discount", async (req, res) => {
+  const userid = req.cookies.user_id;
+  if (!userid) {
+    return res.status(401).json({
+      error: "Not authenticated",
+      redirect: "/login.html",
+    });
+  }
+
+  try {
+    const {
+      rows: [user],
+    } = await query("SELECT discount FROM users WHERE id = $1", [userid]);
+
+    const discount = user.discount || 0;
+    const maxDiscount = 20;
+    const progress = (discount / maxDiscount) * 100;
+
+    const html = `
+      <div class="discount-info">
+        <div class="discount-value">${discount.toFixed(1)}%</div>
+        <div class="discount-progress">
+          <div class="discount-progress-bar" style="width: ${progress}%"></div>
+        </div>
+        <div class="discount-description">
+          Ваша персональная скидка. Максимальная скидка: ${maxDiscount}%
+        </div>
+      </div>
+    `;
+
+    res.send(html);
+  } catch (err) {
+    console.error("Error fetching user discount:", err);
+    res.status(500).send(`
+      <div class="error-message">
+        Произошла ошибка при загрузке информации о скидке
+      </div>
+    `);
   }
 });
 
@@ -666,9 +853,28 @@ function formatOrderMessage(orderData) {
   if (orderData.comments) {
     message += `📝 <b>Комментарий:</b> ${orderData.comments}\n`;
   }
+  if (orderData.customization) {
+    message += `⚙️ <b>Опции:</b> ${orderData.customization}\n`;
+  }
   message += "\n📦 <b>Состав заказа:</b>\n";
 
+  // Группируем товары по названию
+  const groupedItems = {};
   orderData.items.forEach((item) => {
+    if (!groupedItems[item.name]) {
+      groupedItems[item.name] = {
+        name: item.name,
+        quantity: 1,
+        price: item.price,
+        customization: item.customization,
+      };
+    } else {
+      groupedItems[item.name].quantity++;
+    }
+  });
+
+  // Выводим сгруппированные товары
+  Object.values(groupedItems).forEach((item) => {
     message += `├ ${item.name}\n`;
     message += `├─ Количество: ${item.quantity}\n`;
     message += `├─ Цена: ${item.price} руб.\n`;
@@ -728,463 +934,6 @@ async function sendToTelegram(message) {
   }
   return null;
 }
-
-app.post("/api/cart/checkout", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.status(401).json({
-      error: "Not authenticated",
-      redirect: "/login.html",
-    });
-  }
-
-  try {
-    console.log("Checkout request body:", req.body);
-
-    // Get cart items
-    const { data: items, error: itemsError } = await supabase
-      .from("cart")
-      .select(
-        `
-        id,
-        product:productid (
-          id,
-          name,
-          price
-        )
-      `
-      )
-      .eq("userid", userid);
-
-    if (itemsError) {
-      console.error("Error fetching cart items:", itemsError);
-      throw itemsError;
-    }
-
-    if (!items || items.length === 0) {
-      return res.status(400).json({ error: "Корзина пуста" });
-    }
-
-    // Получаем информацию о пользователе
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select("username, phone, address, discount")
-      .eq("id", userid)
-      .single();
-
-    if (userError) throw userError;
-
-    const currentDiscount = user.discount || 0;
-    const total = items.reduce((sum, item) => sum + item.product.price, 0);
-
-    // Рассчитываем новую скидку (0.01% от суммы заказа)
-    const discountIncrease = total * 0.0001;
-    const newDiscount = Math.min(currentDiscount + discountIncrease, 20);
-
-    // Обновляем скидку пользователя
-    const { error: updateError } = await supabase
-      .from("users")
-      .update({ discount: newDiscount })
-      .eq("id", userid);
-
-    if (updateError) throw updateError;
-
-    // Create order with customization from current request
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert([
-        {
-          userid: parseInt(userid),
-          totalamount: total,
-          orderdate: new Date().toISOString(),
-          deliveryaddress: req.body["delivery-address"] || null,
-          comments: req.body.comments || null,
-          customization: req.body.customization || null, // Используем кастомизацию из текущего запроса
-        },
-      ])
-      .select()
-      .single();
-
-    if (orderError) {
-      console.error("Error creating order:", orderError);
-      throw orderError;
-    }
-
-    console.log("Created order:", order);
-
-    // Add order items
-    const orderItems = items.map((item) => ({
-      orderid: order.id,
-      productid: item.product.id,
-      price: item.product.price,
-    }));
-
-    const { error: itemsInsertError } = await supabase
-      .from("order_items")
-      .insert(orderItems);
-
-    if (itemsInsertError) {
-      console.error("Error adding order items:", itemsInsertError);
-      throw itemsInsertError;
-    }
-
-    // После успешного создания заказа отправляем уведомление в Telegram
-    const orderData = {
-      order_id: order.id,
-      customer_name: user.username,
-      phone: user.phone || "Не указан",
-      address: req.body["delivery-address"] || "Не указан",
-      total: total.toFixed(2),
-      discount: Number(newDiscount).toFixed(2),
-      final_total: (total * (1 - newDiscount / 100)).toFixed(2),
-      comments: req.body.comments || null,
-      items: items.map((item) => ({
-        name: item.product.name,
-        quantity: 1,
-        price: item.product.price,
-        customization: order.customization || null,
-      })),
-      order_time: new Date().toLocaleString("ru-RU"),
-    };
-
-    const message = formatOrderMessage(orderData);
-    await sendToTelegram(message);
-
-    // Clear cart only after successful order creation
-    const { error: clearError } = await supabase
-      .from("cart")
-      .delete()
-      .eq("userid", userid);
-
-    if (clearError) {
-      console.error("Error clearing cart:", clearError);
-      console.error("Cart was not cleared, but order was created");
-    }
-
-    res.json({ success: true, message: "Заказ успешно создан" });
-  } catch (err) {
-    console.error("Checkout error:", err);
-    res.status(500).json({ error: "Ошибка при оформлении заказа" });
-  }
-});
-
-app.post("/api/cart/save-dates", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.status(401).json({
-      error: "Not authenticated",
-      redirect: "/login.html",
-    });
-  }
-});
-
-app.post("/api/cart/update/:id", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.status(401).json({
-      error: "Not authenticated",
-      redirect: "/login.html",
-    });
-  }
-
-  try {
-    const { change } = req.body;
-    const cartItemId = req.params.id;
-
-    // Получаем информацию о товаре
-    const { data: cartItem, error: getError } = await supabase
-      .from("cart")
-      .select("productid")
-      .eq("id", cartItemId)
-      .eq("userid", userid)
-      .single();
-
-    if (getError) throw getError;
-
-    // Получаем все записи этого товара в корзине
-    const { data: allItems, error: countError } = await supabase
-      .from("cart")
-      .select("id")
-      .eq("userid", userid)
-      .eq("productid", cartItem.productid);
-
-    if (countError) throw countError;
-
-    const currentCount = allItems.length;
-
-    if (change < 0 && currentCount <= 1) {
-      // Если пытаемся уменьшить и у нас только 1 товар - удаляем
-      const { error: deleteError } = await supabase
-        .from("cart")
-        .delete()
-        .eq("id", cartItemId)
-        .eq("userid", userid);
-
-      if (deleteError) throw deleteError;
-    } else if (change > 0) {
-      // Если увеличиваем - добавляем новую запись
-      const { error: insertError } = await supabase.from("cart").insert([
-        {
-          userid: parseInt(userid),
-          productid: cartItem.productid,
-        },
-      ]);
-
-      if (insertError) throw insertError;
-    } else if (change < 0) {
-      // Если уменьшаем - удаляем одну запись
-      const { error: deleteError } = await supabase
-        .from("cart")
-        .delete()
-        .eq("id", cartItemId)
-        .eq("userid", userid);
-
-      if (deleteError) throw deleteError;
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Database error" });
-  }
-});
-
-// Обновляем эндпоинт истории заказов
-app.get("/api/orders", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.status(401).json({
-      error: "Not authenticated",
-      redirect: "/login.html",
-    });
-  }
-
-  try {
-    // Получаем все заказы пользователя с информацией о товарах
-    const { data: orders, error: ordersError } = await supabase
-      .from("orders")
-      .select(
-        `
-        id,
-        orderdate,
-        totalamount,
-        comments,
-        deliveryaddress,
-        customization,
-        order_items (
-          productid,
-          price,
-          product:productid (
-            name,
-            image
-          )
-        )
-      `
-      )
-      .eq("userid", userid)
-      .order("orderdate", { ascending: false });
-
-    if (ordersError) throw ordersError;
-
-    // Формируем HTML для отображения заказов
-    let html = "";
-
-    if (orders && orders.length > 0) {
-      html +=
-        '<div class="orders-container" style="max-width: 800px; margin: 0 auto; padding: 20px;">';
-
-      // Фильтруем заказы, убирая пустые
-      const validOrders = orders.filter(
-        (order) => order.order_items && order.order_items.length > 0
-      );
-
-      validOrders.forEach((order) => {
-        // Группируем товары по ID
-        const groupedItems = {};
-        order.order_items.forEach((item) => {
-          const key = item.productid;
-          if (!groupedItems[key]) {
-            groupedItems[key] = {
-              product: item.product,
-              price: item.price,
-              quantity: 1,
-            };
-          } else {
-            groupedItems[key].quantity++;
-          }
-        });
-
-        // Рассчитываем суммы
-        const subtotal = order.order_items.reduce(
-          (sum, item) => sum + item.price,
-          0
-        );
-        const discount = Number(
-          ((subtotal - order.totalamount) / subtotal) * 100
-        ).toFixed(2);
-        const discountAmount = (subtotal - order.totalamount).toFixed(2);
-
-        html += `
-          <div class="order-card">
-            <div class="order-header">
-              <h3>Заказ #${order.id}</h3>
-              <div class="order-info">
-                <span class="order-date">${new Date(
-                  order.orderdate
-                ).toLocaleDateString("ru-RU")}</span>
-              </div>
-            </div>
-            <div class="order-details">
-              ${
-                order.deliveryaddress
-                  ? `<p><strong>Адрес доставки:</strong> ${order.deliveryaddress}</p>`
-                  : ""
-              }
-              ${
-                order.comments
-                  ? `<p><strong>Комментарий:</strong> ${order.comments}</p>`
-                  : ""
-              }
-              ${
-                order.customization
-                  ? `<p><strong>Опции:</strong> ${order.customization}</p>`
-                  : ""
-              }
-            </div>
-            <div class="order-items">
-        `;
-
-        // Преобразуем объект в массив и сортируем по названию товара
-        const sortedItems = Object.values(groupedItems).sort((a, b) =>
-          a.product.name.localeCompare(b.product.name)
-        );
-
-        sortedItems.forEach((item) => {
-          const itemTotal = item.price * item.quantity;
-          html += `
-            <div class="order-item">
-              <img src="${item.product.image}" alt="${item.product.name}" />
-              <div class="item-details">
-                <h4>${item.product.name}</h4>
-                <div class="item-info">
-                  <span class="item-price">${item.price.toFixed(2)}₽</span>
-                  <span class="item-quantity">x${item.quantity}</span>
-                </div>
-                <span class="item-total">Итого: ${itemTotal.toFixed(2)}₽</span>
-              </div>
-            </div>
-          `;
-        });
-
-        html += `
-            </div>
-            <div class="order-total">
-              <div class="price-row">
-                <span>Сумма заказа:</span>
-                <span>${subtotal.toFixed(2)}₽</span>
-              </div>
-              ${
-                discount > 0
-                  ? `
-                <div class="price-row discount">
-                  <span>Ваша скидка (${discount}%):</span>
-                  <span>-${discountAmount}₽</span>
-                </div>
-              `
-                  : ""
-              }
-            </div>
-          </div>
-        `;
-      });
-      html += "</div>";
-    } else {
-      html = `
-        <div class="empty-orders">
-          <p>У вас пока нет заказов</p>
-        </div>
-      `;
-    }
-
-    res.send(html);
-  } catch (err) {
-    console.error("Error fetching orders:", err);
-    res.status(500).send(`
-      <div class="error-message">
-        Произошла ошибка при загрузке заказов
-      </div>
-    `);
-  }
-});
-
-// Add endpoint for cart size
-app.get("/api/cart/size", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.send("(0)");
-  }
-
-  try {
-    const { data: items, error } = await supabase
-      .from("cart")
-      .select("id")
-      .eq("userid", userid);
-
-    if (error) throw error;
-
-    const size = items ? items.length : 0;
-    res.send(`(${size})`);
-  } catch (err) {
-    console.error(err);
-    res.send("(0)");
-  }
-});
-
-// Добавляем эндпоинт для получения скидки пользователя
-app.get("/api/user/discount", async (req, res) => {
-  const userid = req.cookies.user_id;
-  if (!userid) {
-    return res.status(401).json({
-      error: "Not authenticated",
-      redirect: "/login.html",
-    });
-  }
-
-  try {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("discount")
-      .eq("id", userid)
-      .single();
-
-    if (error) throw error;
-
-    const discount = user.discount || 0;
-    const maxDiscount = 20;
-    const progress = (discount / maxDiscount) * 100;
-
-    const html = `
-      <div class="discount-info">
-        <div class="discount-value">${discount.toFixed(1)}%</div>
-        <div class="discount-progress">
-          <div class="discount-progress-bar" style="width: ${progress}%"></div>
-        </div>
-        <div class="discount-description">
-          Ваша персональная скидка. Максимальная скидка: ${maxDiscount}%
-        </div>
-      </div>
-    `;
-
-    res.send(html);
-  } catch (err) {
-    console.error("Error fetching user discount:", err);
-    res.status(500).send(`
-      <div class="error-message">
-        Произошла ошибка при загрузке информации о скидке
-      </div>
-    `);
-  }
-});
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "localhost";

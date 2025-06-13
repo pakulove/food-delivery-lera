@@ -95,31 +95,22 @@
         });
       }
 
-      function addToCartWithCustomization(productId) {
-        const customization =
-          document.getElementById("item-customization")?.value || "";
-
-        fetch("/api/cart/add", {
+      function addToCart(productId) {
+        fetch("/api/cart", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             productid: productId,
-            customization: customization,
           }),
-          credentials: "include",
         })
           .then((response) => {
             if (response.ok) {
-              document.body.dispatchEvent(new Event("cart-updated"));
-              const modal = document.querySelector(".modal-overlay");
-              if (modal) {
-                modal.remove();
-              }
               showNotification("Товар добавлен в корзину");
+              updateCartCount();
             } else {
-              throw new Error("Ошибка при добавлении в корзину");
+              showNotification("Ошибка при добавлении в корзину", "error");
             }
           })
           .catch((error) => {

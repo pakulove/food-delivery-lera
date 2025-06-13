@@ -1,15 +1,15 @@
-const { createClient } = require("@supabase/supabase-js");
+const { Pool } = require("pg");
+require("dotenv").config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const pool = new Pool({
+  user: process.env.DB_USER || "postgres",
+  host: process.env.DB_HOST || "localhost",
+  database: process.env.DB_NAME || "lerad",
+  password: process.env.DB_PASSWORD || "postgres",
+  port: process.env.DB_PORT || 5432,
+});
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error(
-    "Ошибка: SUPABASE_URL и SUPABASE_ANON_KEY должны быть определены в .env файле"
-  );
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-module.exports = supabase;
+module.exports = {
+  query: (text, params) => pool.query(text, params),
+  pool,
+};

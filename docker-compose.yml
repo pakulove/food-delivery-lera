@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: lerad-db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - lerad-network
+
+  app:
+    build: .
+    container_name: lerad-app
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=${DB_PORT}
+      - PORT=${PORT}
+      - HOST=${HOST}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    depends_on:
+      - postgres
+    networks:
+      - lerad-network
+
+networks:
+  lerad-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

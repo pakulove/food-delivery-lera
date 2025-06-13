@@ -191,6 +191,104 @@
     </div>
 
     <script>
+      let cartItems = [];
+      let userDiscount = 0;
+      let finalAmount = 0;
+
+      // Загрузка корзины при загрузке страницы
+      document.addEventListener("DOMContentLoaded", async () => {
+        try {
+          const response = await fetch("/api/cart/items");
+          if (!response.ok) {
+            if (response.status === 401) {
+              window.location.href = "/login.html";
+              return;
+            }
+            throw new Error("Failed to load cart");
+          }
+          const data = await response.json();
+          cartItems = data.items;
+          userDiscount = data.discount;
+          renderCart();
+        } catch (error) {
+          console.error("Error loading cart:", error);
+          showNotification("Ошибка загрузки корзины", "error");
+        }
+      });
+
+      function renderCart() {
+        const cartContainer = document.querySelector(".cart-items");
+        if (!cartContainer) return;
+
+        if (cartItems.length === 0) {
+          cartContainer.innerHTML = `
+            <div class="empty-cart">
+              <p>Ваша корзина пуста</p>
+              <a href="/menu.html" class="button">Перейти к меню</a>
+            </div>
+          `;
+          return;
+        }
+
+        let html = "";
+        let totalAmount = 0;
+
+        cartItems.forEach((item) => {
+          const subtotal = item.product.price * item.count;
+          totalAmount += subtotal;
+          const itemDiscount = item.discount || 0;
+          const itemFinalAmount = subtotal * (1 - itemDiscount / 100);
+
+          html += `
+            <div class="cart-item" id="item-${item.cartIds[0]}">
+              <img src="${item.product.image}" alt="${item.product.name}" />
+              <div class="item-details">
+                <h3>${item.product.name}</h3>
+                <div class="item-price">${item.product.price} ₽</div>
+                <div class="item-count">
+                  <button onclick="updateQuantity('${
+                    item.cartIds[0]
+                  }', -1)">-</button>
+                  <span>${item.count}</span>
+                  <button onclick="updateQuantity('${
+                    item.cartIds[0]
+                  }', 1)">+</button>
+                </div>
+                <div class="item-total">${itemFinalAmount.toFixed(2)} ₽</div>
+              </div>
+            </div>
+          `;
+        });
+
+        // Обновляем глобальную переменную finalAmount
+        finalAmount = totalAmount * (1 - userDiscount / 100);
+
+        html += `
+          <div class="cart-total">
+            <div class="total-row">
+              <span>Сумма заказа:</span>
+              <span>${totalAmount.toFixed(2)} ₽</span>
+            </div>
+            ${
+              userDiscount > 0
+                ? `
+              <div class="total-row discount">
+                <span>Ваша скидка (${userDiscount}%):</span>
+                <span>-${(totalAmount - finalAmount).toFixed(2)} ₽</span>
+              </div>
+            `
+                : ""
+            }
+            <div class="total-row final">
+              <span>Итого к оплате:</span>
+              <span class="total-amount">${finalAmount.toFixed(2)} ₽</span>
+            </div>
+          </div>
+        `;
+
+        cartContainer.innerHTML = html;
+      }
+
       // Показ уведомлений
       function showNotification(message, type) {
         const notification = document.getElementById("notification");
@@ -222,9 +320,9 @@
                     <p class="price">${item.product.price} ₽</p>
                   </div>
                   <div class="quantity-controls">
-                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', -1)">-</button>
+                    <button class="quantity-btn" onclick="updateQuantity('${item.cartIds[0]}', -1)">-</button>
                     <span class="quantity">${item.count}</span>
-                    <button class="quantity-btn" onclick="updateQuantity('${item.id}', 1)">+</button>
+                    <button class="quantity-btn" onclick="updateQuantity('${item.cartIds[0]}', 1)">+</button>
                   </div>
                   <button class="remove-item" onclick="removeItem('${item.cartIds[0]}')">
                     <i class="fas fa-trash"></i>
@@ -235,10 +333,8 @@
 
             // Добавляем информацию о скидке
             const discount = response.discount || 0;
-            const discountAmount = (totalAmount * (discount / 100)).toFixed(2);
-            const finalAmount = (
-              totalAmount - parseFloat(discountAmount)
-            ).toFixed(2);
+            const discountAmount = totalAmount * (discount / 100);
+            finalAmount = totalAmount - discountAmount;
 
             cartHtml += `
               <div id="total-price">
@@ -246,13 +342,19 @@
                   <span>Сумма заказа:</span>
                   <span>${totalAmount.toFixed(2)} ₽</span>
                 </div>
-                <div class="price-row discount">
-                  <span>Ваша скидка (${discount.toFixed(1)}%):</span>
-                  <span>-${discountAmount} ₽</span>
-                </div>
+                ${
+                  discount > 0
+                    ? `
+                  <div class="price-row discount">
+                    <span>Ваша скидка (${discount.toFixed(1)}%):</span>
+                    <span>-${discountAmount.toFixed(2)} ₽</span>
+                  </div>
+                `
+                    : ""
+                }
                 <div class="price-row total">
                   <span>Итого к оплате:</span>
-                  <span>${finalAmount} ₽</span>
+                  <span>${finalAmount.toFixed(2)} ₽</span>
                 </div>
               </div>`;
             orderDetails.style.display = "block";
@@ -262,9 +364,6 @@
           }
 
           document.getElementById("cart-items").innerHTML = cartHtml;
-          document.getElementById(
-            "order-total-amount"
-          ).textContent = `${finalAmount} ₽`;
         }
       }
 
@@ -275,7 +374,7 @@
         })
           .then((response) => {
             if (response.ok) {
-              htmx.trigger("#cart-items", "cart-updated");
+              document.body.dispatchEvent(new Event("cart-updated"));
             } else {
               showNotification("Ошибка при удалении товара", "error");
             }
@@ -291,14 +390,25 @@
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Accept: "application/json",
           },
           body: JSON.stringify({ change }),
+          credentials: "include",
         })
-          .then((response) => response.json())
+          .then((response) => {
+            if (!response.ok) {
+              if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+              }
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+          })
           .then((data) => {
             if (data.success) {
               // Обновляем корзину
-              htmx.trigger("#cart-items", "cart-updated");
+              document.body.dispatchEvent(new Event("cart-updated"));
             } else {
               showNotification(
                 data.error || "Ошибка обновления количества",
@@ -307,6 +417,7 @@
             }
           })
           .catch((error) => {
+            console.error("Error updating quantity:", error);
             showNotification("Ошибка обновления количества", "error");
           });
       }
@@ -364,25 +475,10 @@
           return;
         }
 
-        // Получаем итоговую сумму из DOM
-        const totalElement = document.querySelector(
-          ".price-row.total span:last-child"
-        );
-        if (!totalElement) {
-          showNotification("Ошибка: не удалось получить сумму заказа", "error");
-          return;
-        }
-
-        const total = totalElement.textContent.replace(" ₽", "");
-
         const modal = document.getElementById("order-confirm-modal");
-        const totalSpan = document.getElementById("confirm-total");
-        if (totalSpan) {
-          totalSpan.textContent = `${total}₽`;
-        }
-        if (modal) {
-          modal.style.display = "block";
-        }
+        const confirmTotal = document.getElementById("confirm-total");
+        confirmTotal.textContent = `${finalAmount.toFixed(2)} ₽`;
+        modal.style.display = "flex";
       }
 
       // Hide order confirmation modal
@@ -395,183 +491,46 @@
       // Handle modal confirm button click
       document
         .getElementById("confirm-order-btn")
-        .addEventListener("click", async function () {
+        .addEventListener("click", async () => {
+          const deliveryAddress =
+            document.getElementById("delivery-address").value;
+          const comments = document.getElementById("comments").value;
+          const customization =
+            document.querySelector(".customization")?.textContent || "";
+
           try {
-            // Проверяем валидацию
-            if (!validateCheckout()) {
-              hideOrderConfirmModal();
-              return;
+            const response = await fetch("/api/cart/checkout", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                "delivery-address": deliveryAddress,
+                comments,
+                customization,
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error("Checkout failed");
             }
 
-            // Получаем итоговую сумму из DOM
-            const totalElement = document.querySelector(
-              ".price-row.total span:last-child"
-            );
-            if (!totalElement) {
-              showNotification(
-                "Ошибка: не удалось получить сумму заказа",
-                "error"
-              );
-              hideOrderConfirmModal();
-              return;
-            }
-
-            const total = totalElement.textContent.replace(" ₽", "");
-
-            // Получаем способ доставки
-            const deliveryMethodElement = document.querySelector(
-              'input[name="delivery"]:checked'
-            );
-            if (!deliveryMethodElement) {
-              showNotification("Пожалуйста, выберите способ доставки", "error");
-              hideOrderConfirmModal();
-              return;
-            }
-            const deliveryMethod = deliveryMethodElement.value;
-
-            // Формируем адрес доставки в зависимости от способа
-            let deliveryAddress = "Самовывоз";
-            if (deliveryMethod === "delivery") {
-              const addressInput = document.getElementById("delivery-address");
-              if (!addressInput) {
-                showNotification("Ошибка: поле адреса не найдено", "error");
-                hideOrderConfirmModal();
-                return;
-              }
-              if (!addressInput.value.trim()) {
-                showNotification("Пожалуйста, введите адрес доставки", "error");
-                hideOrderConfirmModal();
-                return;
-              }
-              deliveryAddress = addressInput.value.trim();
-            }
-
-            // Получаем комментарий к заказу
-            const commentsInput = document.getElementById("comments");
-            const comments = commentsInput ? commentsInput.value.trim() : "";
-
-            // Получаем способ оплаты
-            const paymentMethodElement = document.querySelector(
-              'input[name="payment"]:checked'
-            );
-            if (!paymentMethodElement) {
-              showNotification("Пожалуйста, выберите способ оплаты", "error");
-              hideOrderConfirmModal();
-              return;
-            }
-            const paymentMethod = paymentMethodElement.value;
-
-            // Собираем данные карты, если выбран этот способ оплаты
-            let cardData = {};
-            if (paymentMethod === "card") {
-              const cardNumber = document.getElementById("card-number");
-              const cardExpiry = document.getElementById("card-expiry");
-              const cardCVV = document.getElementById("card-cvv");
-              const cardHolder = document.getElementById("card-holder");
-
-              if (!cardNumber || !cardExpiry || !cardCVV || !cardHolder) {
-                showNotification("Ошибка: не все поля карты найдены", "error");
-                hideOrderConfirmModal();
-                return;
-              }
-
-              if (
-                !cardNumber.value ||
-                !cardExpiry.value ||
-                !cardCVV.value ||
-                !cardHolder.value
-              ) {
-                showNotification(
-                  "Пожалуйста, заполните все поля карты",
-                  "error"
-                );
-                hideOrderConfirmModal();
-                return;
-              }
-
-              cardData = {
-                "card-number": cardNumber.value,
-                "card-expiry": cardExpiry.value,
-                "card-cvv": cardCVV.value,
-                "card-holder": cardHolder.value,
-              };
-            }
-
-            // Подготавливаем данные для отправки
-            const orderData = {
-              "delivery-address": deliveryAddress,
-              comments: comments,
-              payment: paymentMethod,
-              delivery: deliveryMethod,
-              total: total,
-              customization:
-                document.getElementById("item-customization")?.value || null,
-              ...cardData,
-            };
-
-            console.log("Sending order data:", orderData);
-
-            // Создаем AbortController для таймаута
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 секунд таймаут
-
-            try {
-              const response = await fetch("/api/cart/checkout", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Accept: "application/json",
-                },
-                body: JSON.stringify(orderData),
-                credentials: "include",
-                signal: controller.signal,
-              });
-
-              clearTimeout(timeoutId); // Очищаем таймаут при успешном ответе
-
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-
-              const result = await response.json();
-              console.log("Server response:", result);
-
-              if (result.success) {
-                showNotification("Заказ успешно оформлен!", "success");
-                // Очищаем корзину и обновляем интерфейс
-                const cartItems = document.getElementById("cart-items");
-                const totalPrice = document.getElementById("total-price");
-                if (cartItems) cartItems.innerHTML = "";
-                if (totalPrice) totalPrice.textContent = "0 ₽";
-                document.body.dispatchEvent(new Event("cart-updated"));
-                hideOrderConfirmModal();
-                setTimeout(() => {
-                  window.location.reload();
-                }, 1000);
-              } else {
-                showNotification(
-                  result.error || "Ошибка оформления заказа",
-                  "error"
-                );
-                hideOrderConfirmModal();
-              }
-            } catch (fetchError) {
-              clearTimeout(timeoutId); // Очищаем таймаут при ошибке
-
-              if (fetchError.name === "AbortError") {
-                throw new Error(
-                  "Превышено время ожидания ответа от сервера. Пожалуйста, попробуйте позже."
-                );
-              }
-              throw fetchError;
+            const result = await response.json();
+            if (result.success) {
+              showNotification("Заказ успешно оформлен!", "success");
+              document.getElementById("order-confirm-modal").style.display =
+                "none";
+              cartItems = [];
+              renderCart();
+            } else {
+              throw new Error(result.error || "Ошибка при оформлении заказа");
             }
           } catch (error) {
-            console.error("Error details:", error);
+            console.error("Checkout error:", error);
             showNotification(
-              "Ошибка оформления заказа: " + error.message,
+              error.message || "Ошибка при оформлении заказа",
               "error"
             );
-            hideOrderConfirmModal();
           }
         });
 
@@ -640,6 +599,23 @@
         ).value;
         toggleDeliveryFields(deliveryMethod === "delivery");
       });
+
+      function updateTotalAmount() {
+        const total = cartItems.reduce((sum, item) => {
+          const subtotal = item.product.price * item.count;
+          const discount = item.discount || 0;
+          return sum + subtotal * (1 - discount / 100);
+        }, 0);
+
+        finalAmount = total * (1 - userDiscount / 100);
+
+        const totalElement = document.querySelector(
+          ".cart-total .total-amount"
+        );
+        if (totalElement) {
+          totalElement.textContent = `${finalAmount.toFixed(2)} ₽`;
+        }
+      }
     </script>
   </body>
 </html>
