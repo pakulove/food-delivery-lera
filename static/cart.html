@@ -520,8 +520,10 @@
               showNotification("Заказ успешно оформлен!", "success");
               document.getElementById("order-confirm-modal").style.display =
                 "none";
-              cartItems = [];
-              renderCart();
+              // Обновляем страницу после успешного создания заказа
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
             } else {
               throw new Error(result.error || "Ошибка при оформлении заказа");
             }

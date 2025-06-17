@@ -67,9 +67,10 @@
           hx-swap="none"
           hx-on::after-request="
             if (event.detail.successful) {
-              showNotification('Регистрация успешна!', 'success');
+              const response = JSON.parse(event.detail.xhr.response);
+              showNotification(response.message || 'Регистрация успешна!', 'success');
               setTimeout(() => {
-                showLogin();
+                window.location.href = response.redirect || '/';
               }, 1000);
             } else {
               const response = JSON.parse(event.detail.xhr.response);

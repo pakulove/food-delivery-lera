@@ -34,8 +34,10 @@ app.get("/login.html", (req, res) => {
 // Auth endpoints
 app.post("/api/auth/register", async (req, res) => {
   const { username, password, email, phone, address } = req.body;
+  console.log("Registration attempt for user:", username);
 
   if (!username || !password) {
+    console.log("Missing username or password");
     return res
       .status(400)
       .json({ error: "Имя пользователя и пароль обязательны" });
@@ -43,38 +45,85 @@ app.post("/api/auth/register", async (req, res) => {
 
   try {
     // Check if user already exists
+    console.log("Checking if user exists:", username);
     const { rows: existingUsers } = await query(
       "SELECT id FROM users WHERE username = $1",
       [username]
     );
 
     if (existingUsers.length > 0) {
+      console.log("User already exists:", username);
       return res.status(400).json({ error: "Пользователь уже существует" });
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log("Hashing password for user:", username);
+    let hashedPassword;
+    try {
+      hashedPassword = await bcrypt.hash(password, 10);
+      console.log("Password hashed successfully");
+    } catch (hashError) {
+      console.error("Error during password hashing:", hashError);
+      console.error("Error details:", {
+        message: hashError.message,
+        stack: hashError.stack,
+        code: hashError.code,
+      });
+      return res
+        .status(500)
+        .json({ error: "Ошибка при создании пользователя" });
+    }
 
     // Create user
-    const {
-      rows: [newUser],
-    } = await query(
-      `INSERT INTO users (username, password, email, phone, address)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id`,
-      [username, hashedPassword, email || null, phone || null, address || null]
-    );
+    console.log("Creating new user:", username);
+    try {
+      const {
+        rows: [newUser],
+      } = await query(
+        `INSERT INTO users (username, password, email, phone, address)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [
+          username,
+          hashedPassword,
+          email || null,
+          phone || null,
+          address || null,
+        ]
+      );
 
-    // Set cookie
-    res.cookie("user_id", newUser.id, {
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    });
+      console.log("User created successfully:", newUser.id);
 
-    res.json({ message: "Регистрация прошла успешно" });
+      // Set cookie
+      res.cookie("user_id", newUser.id, {
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      });
+
+      res.json({
+        success: true,
+        message: "Регистрация прошла успешно",
+        redirect: "/",
+      });
+    } catch (dbError) {
+      console.error("Error during user creation:", dbError);
+      console.error("Error details:", {
+        message: dbError.message,
+        stack: dbError.stack,
+        code: dbError.code,
+      });
+      return res
+        .status(500)
+        .json({ error: "Ошибка при создании пользователя" });
+    }
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Ошибка базы данных" });
+    console.error("Registration error:", err);
+    console.error("Error details:", {
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+    });
+    return res.status(500).json({ error: "Ошибка базы данных" });
   }
 });
 
