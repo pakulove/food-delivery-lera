@@ -426,7 +426,11 @@ app.post("/api/cart/add", async (req, res) => {
       `INSERT INTO cart (userid, productid, customization)
        VALUES ($1, $2, $3)
        RETURNING *`,
-      [parseInt(userid), parseInt(productid), customization]
+      [
+        parseInt(userid),
+        parseInt(productid),
+        customization?.replace("Особые пожелания: ", ""),
+      ]
     );
 
     console.log("Successfully added to cart:", rows[0]);
@@ -584,7 +588,7 @@ app.post("/api/cart/checkout", async (req, res) => {
         finalAmount,
         req.body["delivery-address"] || null,
         req.body.comments || null,
-        req.body.customization || null,
+        req.body.customization?.replace("Особые пожелания: ", "") || null,
       ]
     );
 
@@ -593,14 +597,20 @@ app.post("/api/cart/checkout", async (req, res) => {
       orderid: order.id,
       productid: item.product_id,
       price: item.price,
-      customization: item.customization,
+      customization:
+        item.customization?.replace("Особые пожелания: ", "") || null,
     }));
 
     for (const item of orderItems) {
       await query(
         `INSERT INTO order_items (orderid, productid, price, customization)
          VALUES ($1, $2, $3, $4)`,
-        [item.orderid, item.productid, item.price, item.customization]
+        [
+          item.orderid,
+          item.productid,
+          item.price,
+          item.customization?.replace("Особые пожелания: ", ""),
+        ]
       );
     }
 
@@ -768,7 +778,7 @@ app.get("/api/orders", async (req, res) => {
                   )}₽</span>
                   ${
                     item.customization
-                      ? `<p class="customization">Особые пожелания: ${item.customization}</p>`
+                      ? `<p class="customization">${item.customization}</p>`
                       : ""
                   }
                 </div>
@@ -907,10 +917,7 @@ function formatOrderMessage(orderData) {
     message += `📝 <b>Комментарий:</b> ${orderData.comments}\n`;
   }
   if (orderData.customization) {
-    message += `⚙️ <b>Особые пожелания:</b> ${orderData.customization.slice(
-      0,
-      7
-    )}\n`;
+    message += `⚙️ <b>Особые пожелания:</b> ${orderData.customization}\n`;
   }
   message += "\n📦 <b>Состав заказа:</b>\n";
 
