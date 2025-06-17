@@ -739,7 +739,7 @@ app.get("/api/orders", async (req, res) => {
                 }
                 ${
                   order.customization
-                    ? `<p><strong>Опции:</strong> ${order.customization}</p>`
+                    ? `<p><strong>Особые пожелания:</strong> ${order.customization}</p>`
                     : ""
                 }
               </div>
@@ -768,7 +768,7 @@ app.get("/api/orders", async (req, res) => {
                   )}₽</span>
                   ${
                     item.customization
-                      ? `<p class="customization">Опции: ${item.customization}</p>`
+                      ? `<p class="customization">Особые пожелания: ${item.customization}</p>`
                       : ""
                   }
                 </div>
@@ -907,7 +907,10 @@ function formatOrderMessage(orderData) {
     message += `📝 <b>Комментарий:</b> ${orderData.comments}\n`;
   }
   if (orderData.customization) {
-    message += `⚙️ <b>Опции:</b> ${orderData.customization}\n`;
+    message += `⚙️ <b>Особые пожелания:</b> ${orderData.customization.slice(
+      0,
+      7
+    )}\n`;
   }
   message += "\n📦 <b>Состав заказа:</b>\n";
 
@@ -932,7 +935,7 @@ function formatOrderMessage(orderData) {
     message += `├─ Количество: ${item.quantity}\n`;
     message += `├─ Цена: ${item.price} руб.\n`;
     if (item.customization) {
-      message += `├─ Опции: ${item.customization}\n`;
+      message += `├─ Особые пожелания: ${item.customization}\n`;
     }
     message += `└─ Итого: ${(item.price * item.quantity).toFixed(2)} руб.\n\n`;
   });
