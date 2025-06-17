@@ -347,7 +347,7 @@ app.get("/api/cart/items", async (req, res) => {
     const discount = user.discount || 0;
 
     const { rows: items } = await query(
-      `SELECT c.id, p.id as product_id, p.name, p.price, p.image
+      `SELECT c.id, p.id as product_id, p.name, p.price, p.image, c.customization
        FROM cart c
        JOIN products p ON c.productid = p.id
        WHERE c.userid = $1`,
@@ -356,7 +356,7 @@ app.get("/api/cart/items", async (req, res) => {
 
     // Группируем товары и считаем количество
     const groupedItems = items.reduce((acc, item) => {
-      const key = `${item.product_id}`;
+      const key = `${item.product_id}-${item.customization || ""}`;
       if (!acc[key]) {
         acc[key] = {
           id: item.id,
@@ -369,6 +369,7 @@ app.get("/api/cart/items", async (req, res) => {
           count: 1,
           cartIds: [item.id],
           discountedPrice: item.price * (1 - discount / 100),
+          customization: item.customization,
         };
       } else {
         acc[key].count++;
@@ -405,8 +406,9 @@ app.post("/api/cart/add", async (req, res) => {
     `);
   }
 
-  const { productid } = req.body;
+  const { productid, customization } = req.body;
   console.log("Product ID:", productid);
+  console.log("Customization:", customization);
 
   try {
     // Check if product exists
@@ -421,10 +423,10 @@ app.post("/api/cart/add", async (req, res) => {
 
     // Add to cart
     const { rows } = await query(
-      `INSERT INTO cart (userid, productid)
-       VALUES ($1, $2)
+      `INSERT INTO cart (userid, productid, customization)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [parseInt(userid), parseInt(productid)]
+      [parseInt(userid), parseInt(productid), customization]
     );
 
     console.log("Successfully added to cart:", rows[0]);
@@ -537,7 +539,7 @@ app.post("/api/cart/checkout", async (req, res) => {
 
     // Get cart items
     const { rows: items } = await query(
-      `SELECT c.id, p.id as product_id, p.name, p.price
+      `SELECT c.id, p.id as product_id, p.name, p.price, c.customization
        FROM cart c
        JOIN products p ON c.productid = p.id
        WHERE c.userid = $1`,
@@ -591,13 +593,14 @@ app.post("/api/cart/checkout", async (req, res) => {
       orderid: order.id,
       productid: item.product_id,
       price: item.price,
+      customization: item.customization,
     }));
 
     for (const item of orderItems) {
       await query(
-        `INSERT INTO order_items (orderid, productid, price)
-         VALUES ($1, $2, $3)`,
-        [item.orderid, item.productid, item.price]
+        `INSERT INTO order_items (orderid, productid, price, customization)
+         VALUES ($1, $2, $3, $4)`,
+        [item.orderid, item.productid, item.price, item.customization]
       );
     }
 
@@ -616,6 +619,7 @@ app.post("/api/cart/checkout", async (req, res) => {
         name: item.name,
         quantity: 1,
         price: item.price,
+        customization: item.customization,
       })),
       order_time: new Date().toLocaleString("ru-RU"),
     };

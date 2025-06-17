@@ -245,6 +245,11 @@
               <div class="item-details">
                 <h3>${item.product.name}</h3>
                 <div class="item-price">${item.product.price} ₽</div>
+                ${
+                  item.customization
+                    ? `<div class="item-customization">Опции: ${item.customization}</div>`
+                    : ""
+                }
                 <div class="item-count">
                   <button onclick="updateQuantity('${
                     item.cartIds[0]
@@ -314,17 +319,30 @@
               totalAmount += item.product.price * item.count;
               cartHtml += `
                 <div class="cart-item">
-                  <img src="${item.product.image}" alt="${item.product.name}" style="width: 80px; height: 80px; object-fit: cover;">
+                  <img src="${item.product.image}" alt="${
+                item.product.name
+              }" style="width: 80px; height: 80px; object-fit: cover;">
                   <div class="cart-item-content">
                     <h3>${item.product.name}</h3>
                     <p class="price">${item.product.price} ₽</p>
+                    ${
+                      item.customization
+                        ? `<p class="customization">Опции: ${item.customization}</p>`
+                        : ""
+                    }
                   </div>
                   <div class="quantity-controls">
-                    <button class="quantity-btn" onclick="updateQuantity('${item.cartIds[0]}', -1)">-</button>
+                    <button class="quantity-btn" onclick="updateQuantity('${
+                      item.cartIds[0]
+                    }', -1)">-</button>
                     <span class="quantity">${item.count}</span>
-                    <button class="quantity-btn" onclick="updateQuantity('${item.cartIds[0]}', 1)">+</button>
+                    <button class="quantity-btn" onclick="updateQuantity('${
+                      item.cartIds[0]
+                    }', 1)">+</button>
                   </div>
-                  <button class="remove-item" onclick="removeItem('${item.cartIds[0]}')">
+                  <button class="remove-item" onclick="removeItem('${
+                    item.cartIds[0]
+                  }')">
                     <i class="fas fa-trash"></i>
                   </button>
                 </div>

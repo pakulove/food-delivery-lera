@@ -934,12 +934,10 @@ button:disabled {
 }
 
 .item-customization {
-  font-size: 14px;
+  font-size: 0.9em;
   color: #666;
-  margin-top: 8px;
-  padding: 8px;
-  background: #f8f9fa;
-  border-radius: 6px;
+  margin: 5px 0;
+  font-style: italic;
 }
 
 .item-price {
@@ -1274,4 +1272,11 @@ button:disabled {
   cursor: not-allowed;
   font-size: 12px;
   padding: 8px 12px;
+}
+
+.customization {
+  font-size: 0.9em;
+  color: #666;
+  margin: 5px 0;
+  font-style: italic;
 }
